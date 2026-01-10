@@ -1,0 +1,15 @@
+export { validateNamaLengkap } from "./namaLengkap";
+export { validateRole } from "./role";
+export { validateNIM } from "./nim";
+export { validateEmail } from "./email";
+export { validateDepartemen } from "./departemen";
+export { validateProgramStudi } from "./programStudi";
+export { validateTempatLahir } from "./tempatLahir";
+export { validateTanggalLahir } from "./tanggalLahir";
+export { validateNoHp } from "./noHp";
+export { validateIPK } from "./ipk";
+export { validateIPS } from "./ips";
+export { validateJenisSurat } from "./jenisSurat";
+export { validateNamaBeasiswa } from "./namaBeasiswa";
+export { validateLampiranUtama } from "./lampiranUtama";
+export { validateLampiranTambahan } from "./lampiranTambahan";
