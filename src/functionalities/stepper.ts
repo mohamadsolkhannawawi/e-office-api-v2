@@ -1,25 +1,25 @@
 // Functionality for stepper navigation between steps
 
 export interface StepperState {
-  currentStep: number;
-  data: Record<string, any>;
+    currentStep: number;
+    data: Record<string, any>;
 }
 
 export function goToPreviousStep(state: StepperState) {
-  if (state.currentStep > 1) {
-    return {
-      ...state,
-      currentStep: state.currentStep - 1
-    };
-  }
-  return state;
+    if (state.currentStep > 1) {
+        return {
+            ...state,
+            currentStep: state.currentStep - 1,
+        };
+    }
+    return state;
 }
 
 export function goToNextStep(state: StepperState) {
-  return {
-    ...state,
-    currentStep: state.currentStep + 1
-  };
+    return {
+        ...state,
+        currentStep: state.currentStep + 1,
+    };
 }
 
 // Example usage:
