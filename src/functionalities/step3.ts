@@ -26,6 +26,17 @@ export function validateStep3(data: Step3Data) {
                 );
             }
         });
+        // Check at least one has kategori
+        const hasKategori = data.lampiranTambahan.some(
+            (item) =>
+                item &&
+                typeof item === "object" &&
+                "kategori" in item &&
+                item.kategori
+        );
+        if (!hasKategori) {
+            errors.push("Minimal 1 lampiran wajib memiliki kategori");
+        }
     } else {
         errors.push("Minimal 1 lampiran wajib");
     }
