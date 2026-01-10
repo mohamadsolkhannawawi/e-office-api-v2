@@ -1,5 +1,8 @@
 // Validation placeholder for Nama Lengkap
-// TODO: implement validation logic
 export function validateNamaLengkap(value: unknown) {
-    return { valid: true, errors: [] as string[] };
+    const errors: string[] = [];
+    if (typeof value !== "string" || value.trim() === "") {
+        errors.push("Nama lengkap harus valid dan tidak boleh kosong");
+    }
+    return { valid: errors.length === 0, errors };
 }
