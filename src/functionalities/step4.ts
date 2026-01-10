@@ -23,14 +23,20 @@ export function closeConfirmationModal(state: Step4State): Step4State {
 export async function onSubmitConfirmation(
     state: Step4State,
     confirm: boolean
-): Promise<Step4State> {
+): Promise<{
+    state: Step4State;
+    redirectUrl?: string;
+    notification?: { type: "success" | "error"; message: string };
+}> {
     if (!confirm) {
-        return { ...state, showModal: false };
+        return { state: { ...state, showModal: false } };
     }
     // Start loading and disable button
     let newState = { ...state, loading: true, buttonDisabled: true };
     // Simulate async submit process (replace with real API call)
     await new Promise((resolve) => setTimeout(resolve, 2000));
+    // Simulate nomor surat generation (replace with real nomor from backend)
+    const nomor = "2026-0001";
     // After submit
     newState = {
         ...newState,
@@ -39,7 +45,11 @@ export async function onSubmitConfirmation(
         submitted: true,
         showModal: false,
     };
-    return newState;
+    return {
+        state: newState,
+        redirectUrl: `/surat/detail/${nomor}`,
+        notification: { type: "success", message: "Surat berhasil diajukan!" },
+    };
 }
 
 // Usage example:
