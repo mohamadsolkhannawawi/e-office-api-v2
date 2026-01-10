@@ -1,5 +1,11 @@
 // Validation placeholder for Email
-// TODO: implement validation logic
 export function validateEmail(value: unknown) {
-    return { valid: true, errors: [] as string[] };
+    const errors: string[] = [];
+    const emailStr = typeof value === "string" ? value : String(value);
+    // Simple email regex validation
+    const emailRegex = /^[\w-.]+@[\w-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(emailStr)) {
+        errors.push("Format email tidak valid");
+    }
+    return { valid: errors.length === 0, errors };
 }

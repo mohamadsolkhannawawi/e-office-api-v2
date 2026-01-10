@@ -1,5 +1,4 @@
 // Validation placeholder for NIM
-// TODO: implement validation logic
 export function validateNIM(value: unknown) {
     const errors: string[] = [];
     const nimStr = typeof value === "string" ? value : String(value);
