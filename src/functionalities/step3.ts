@@ -9,6 +9,9 @@ export interface Step3Data {
 export function validateStep3(data: Step3Data) {
     const errors: string[] = [];
     if (Array.isArray(data.lampiranTambahan)) {
+        if (data.lampiranTambahan.length === 0) {
+            errors.push("Minimal 1 lampiran wajib");
+        }
         if (data.lampiranTambahan.length > 3) {
             errors.push("Lampiran tambahan maksimal 3 file");
         }
@@ -23,6 +26,8 @@ export function validateStep3(data: Step3Data) {
                 );
             }
         });
+    } else {
+        errors.push("Minimal 1 lampiran wajib");
     }
     return { valid: errors.length === 0, errors };
 }
