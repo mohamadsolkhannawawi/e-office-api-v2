@@ -7,12 +7,7 @@ export function validateLampiranUtama(value: unknown) {
     const errors: string[] = [];
 
     // Require at least 1 lampiran utama
-    if (value == null) {
-        errors.push("Minimal 1 lampiran wajib");
-        return { valid: false, errors };
-    }
-
-    if (!Array.isArray(value)) {
+    if (value == null || !Array.isArray(value)) {
         errors.push("Minimal 1 lampiran wajib");
         return { valid: false, errors };
     }
@@ -23,7 +18,7 @@ export function validateLampiranUtama(value: unknown) {
         errors.push("Maksimal 5 file");
     }
 
-    const allowedExt = ["pdf", "jpg", "jpeg", "png"];
+    const allowedExt = ["pdf", "jpg", "png"];
     const maxBytes = 5 * 1024 * 1024;
 
     for (const f of files) {
@@ -42,7 +37,7 @@ export function validateLampiranUtama(value: unknown) {
         const extMatch = name.match(/\.([^.]+)$/);
         const ext = extMatch?.[1]?.toLowerCase() ?? "";
 
-        const mimeAllowed = (type && (type.includes("pdf") || type.includes("jpeg") || type.includes("jpg") || type.includes("png")));
+        const mimeAllowed = (type && (type.includes("pdf") || type.includes("jpg") || type.includes("png")));
         const extAllowed = allowedExt.includes(ext);
 
         if (!mimeAllowed && !extAllowed) {
