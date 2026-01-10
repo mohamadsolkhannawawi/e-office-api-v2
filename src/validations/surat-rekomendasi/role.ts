@@ -1,5 +1,4 @@
 // Validation placeholder for Role
-// TODO: implement validation logic
 export function validateRole(value: unknown) {
     const errors: string[] = [];
     let parsed = "";
