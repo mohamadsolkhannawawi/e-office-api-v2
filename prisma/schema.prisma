@@ -11,7 +11,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 generator prismabox {
@@ -249,8 +248,16 @@ model ProgramStudi {
 model Attachment {
   id String @id @default(cuid())
 
-  domain   String
-  filename String
+  domain         String
+  filename       String
+  fileSize       Int?   // File size in bytes
+  mimeType       String? // e.g., application/pdf, image/jpeg
+  category       String? // "Utama" atau "Tambahan" untuk lampiran beasiswa
+  attachmentType String? // "File", "Foto", "Lainnya"
+
+  // Relation ke LetterInstance
+  letterInstanceId String?
+  letterInstance   LetterInstance? @relation(fields: [letterInstanceId], references: [id], onDelete: Cascade)
 
   createdAt DateTime? @default(now())
   updatedAt DateTime? @updatedAt
@@ -301,17 +308,22 @@ enum FieldType {
 model LetterInstance {
   id String @id @default(cuid())
 
-  schema      Json
-  values      Json
-  status      LetterStatus @default(PENDING)
-  currentStep Int?
+  schema           Json
+  values           Json
+  status           LetterStatus @default(PENDING)
+  currentStep      Int?
+  scholarshipName  String? // Nama beasiswa yang diajukan
 
   letterTypeId String
   letterType   LetterType @relation(fields: [letterTypeId], references: [id])
   createdById  String
   createdBy    User       @relation(fields: [createdById], references: [id])
 
+  // Relation ke attachments/lampiran
+  attachments  Attachment[]
+
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("letter_instance")
 }
