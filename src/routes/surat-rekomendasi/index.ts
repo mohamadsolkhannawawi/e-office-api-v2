@@ -198,7 +198,7 @@ const suratRekomendasiRoutes = new Elysia({
                 const attachment = await AttachmentService.uploadAttachment({
                     file,
                     letterInstanceId,
-                    userId: "temp-user",
+                    userId: letterInstance.createdById,
                     category: category as "Utama" | "Tambahan",
                 });
 
