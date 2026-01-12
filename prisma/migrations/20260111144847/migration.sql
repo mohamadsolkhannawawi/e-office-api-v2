@@ -170,6 +170,11 @@ CREATE TABLE "attachment" (
     "id" TEXT NOT NULL,
     "domain" TEXT NOT NULL,
     "filename" TEXT NOT NULL,
+    "fileSize" INTEGER,
+    "mimeType" TEXT,
+    "category" TEXT,
+    "attachmentType" TEXT,
+    "letterInstanceId" TEXT,
     "createdAt" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3),
     "deletedAt" TIMESTAMP(3),
@@ -207,9 +212,11 @@ CREATE TABLE "letter_instance" (
     "values" JSONB NOT NULL,
     "status" "letter_status" NOT NULL DEFAULT 'PENDING',
     "currentStep" INTEGER,
+    "scholarshipName" TEXT,
     "letterTypeId" TEXT NOT NULL,
     "createdById" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "letter_instance_pkey" PRIMARY KEY ("id")
 );
@@ -228,6 +235,9 @@ CREATE INDEX "verification_identifier_idx" ON "verification"("identifier");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "role_name_key" ON "role"("name");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "permission_resource_action_key" ON "permission"("resource", "action");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "user_role_userId_roleId_key" ON "user_role"("userId", "roleId");
@@ -288,6 +298,9 @@ ALTER TABLE "pegawai" ADD CONSTRAINT "pegawai_programStudiId_fkey" FOREIGN KEY (
 
 -- AddForeignKey
 ALTER TABLE "program_studi" ADD CONSTRAINT "program_studi_departemenId_fkey" FOREIGN KEY ("departemenId") REFERENCES "departemen"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "attachment" ADD CONSTRAINT "attachment_letterInstanceId_fkey" FOREIGN KEY ("letterInstanceId") REFERENCES "letter_instance"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "letter_template" ADD CONSTRAINT "letter_template_letter_type_id_fkey" FOREIGN KEY ("letter_type_id") REFERENCES "letter_type"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
