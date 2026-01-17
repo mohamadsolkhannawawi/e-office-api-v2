@@ -1,4 +1,4 @@
-// Functionality for stepper navigation between steps
+// Fungsionalitas untuk navigasi stepper antar langkah
 
 export interface StepperState {
     currentStep: number;
@@ -22,7 +22,7 @@ export function goToNextStep(state: StepperState) {
     };
 }
 
-// Example usage:
+// Contoh penggunaan:
 // const state = { currentStep: 2, data: { ... } };
 // const newState = goToPreviousStep(state);
 // // newState.currentStep === 1, data tetap ada
