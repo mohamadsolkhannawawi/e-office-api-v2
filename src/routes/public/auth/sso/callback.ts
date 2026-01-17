@@ -1,145 +1,168 @@
+import { Prisma as prisma } from "@backend/db/index.ts";
 import { Elysia, t } from "elysia";
-import { randomUUIDv7 } from "bun";
 
 interface SSOResponse {
-	data: {
-		user: {
-			role: string;
-			name: string;
-			username: string;
-		};
-	};
+    data: {
+        user: {
+            role: string;
+            name: string;
+            username: string;
+        };
+    };
 }
 
 export default new Elysia().get(
-	"/",
-	async ({ headers, cookie: { auth } }) => {
-		const authHeader = headers.authorization;
+    "/",
+    async ({ headers, set }) => {
+        const authHeader = headers.authorization;
 
-		// Validate with SSO service
-		const ssoResponse = await fetch(`${process.env.SSO_URL}/users/validate`, {
-			headers: {
-				Authorization: authHeader,
-				"Content-Type": "application/json",
-			},
-		});
+        if (!authHeader) {
+            set.status = 401;
+            return { error: "Authorization header missing" };
+        }
 
-		const response = (await ssoResponse.json()) as SSOResponse;
-		console.log("Priority ssoResponse =>>", response);
+        // Validate with SSO service
+        const ssoResponse = await fetch(
+            `${process.env.SSO_URL}/users/validate`,
+            {
+                headers: {
+                    Authorization: authHeader,
+                    "Content-Type": "application/json",
+                },
+            },
+        );
 
-		if (ssoResponse.status !== 200) {
-			return "fails";
-		}
-		const username = response.data.user.username;
+        if (ssoResponse.status !== 200) {
+            set.status = 401;
+            return { error: "SSO validation failed" };
+        }
 
-		// Find user in database
-		const user = await prisma.user.findUnique({
-			include: {
-				HakAkses: {
-					include: {
-						roleRef: {},
-					},
-				},
-			},
-			where: {
-				email: username, // Assuming username from SSO is email
-			},
-		});
+        const response = (await ssoResponse.json()) as SSOResponse;
+        console.log("SSO response =>>", response);
 
-		console.log("user local =>", user);
+        const username = response.data.user.username;
 
-		// daftarkan user ke aplikasi jika mahasiswa
-		try {
-			if (!user && response.data.user.role === "mahasiswa") {
-				const bcryptHash = await Bun.password.hash(
-					process.env.DEFAULT_PASSWORD || "rumitpassword123",
-				);
-				const dataUser = {
-					name: response.data.user.name,
-					email: response.data.user.username,
-					password: bcryptHash,
-					createdAt: new Date(),
-					updatedAt: new Date(),
-				};
-				const user = await prisma.user.create({ data: dataUser });
+        // Find user in database
+        let user = await prisma.user.findUnique({
+            include: {
+                userRole: {
+                    include: {
+                        role: true,
+                    },
+                },
+            },
+            where: {
+                email: username, // Assuming username from SSO is email
+            },
+        });
 
-				console.log("user created =>", user);
+        console.log("user local =>", user);
 
-				const dataMahasiswa = {
-					uuid: user.uuid,
-					nim: "24060123456789",
-					jenjang: null,
-					tahunMasuk: null,
-					alamat: null,
-					no_hp: null,
-					id_prodi: null,
-					id_departemen: null,
-				};
-				const statusCreateMahasiwa = await prisma.mahasiswa.create({
-					data: dataMahasiswa,
-				});
-				console.log("statusCreateMahasiwa =>", statusCreateMahasiwa);
+        // Register user to application if not found
+        try {
+            if (!user) {
+                const dataUser = {
+                    name: response.data.user.name,
+                    email: response.data.user.username,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                };
+                user = await prisma.user.create({
+                    data: dataUser,
+                    include: {
+                        userRole: {
+                            include: {
+                                role: true,
+                            },
+                        },
+                    },
+                });
 
-				const data = {
-					uuid: user.uuid,
-					role: ERole.PEMOHON,
-					createdAt: new Date(),
-				} as HakAkses;
-				await prisma.hakAkses.create({ data: data });
+                console.log("user created =>", user);
 
-				console.log("statusCreateHakAkses =>", data);
-			}
-			// dosen
-			else if (!user && response.data.user.role === "dosen") {
-				console.log(response.data.user.role);
-				console.log("create user dosen");
-				const bcryptHash = await Bun.password.hash(
-					process.env.DEFAULT_PASSWORD || "rumitpassword123",
-				);
-				const dataUser = {
-					uuid: randomUUIDv7(),
-					name: response.data.user.name,
-					email: response.data.user.username,
-					password: bcryptHash,
-					createdAt: new Date(),
-					updatedAt: new Date(),
-				};
-				const user = await prisma.user.create({ data: dataUser });
+                // Assign profile and role based on SSO role
+                if (response.data.user.role === "mahasiswa") {
+                    // We need a default departemen and prodi if they are required in schema
+                    // For now searching for any existing ones or using placeholder IDs if known
+                    // Ideally these should be synced from SSO too
+                    const defaultDept = await prisma.departemen.findFirst();
+                    const defaultProdi = await prisma.programStudi.findFirst();
 
-				console.log("user created =>", user);
+                    if (!defaultDept || !defaultProdi) {
+                        throw new Error(
+                            "Default departemen or prodi not found in database",
+                        );
+                    }
 
-				// tabel user
-				const dataMaPegawai = {
-					uuid: user.uuid,
-					nip: "24060123456789",
-					id_departemen: null,
-					id_prodi: null,
-					no_hp: null,
-					jabatan: "",
-				};
+                    await prisma.mahasiswa.create({
+                        data: {
+                            userId: user.id,
+                            nim: username.split("@")[0] || "24060123456789",
+                            tahunMasuk: new Date().getFullYear().toString(),
+                            noHp: "-",
+                            departemenId: defaultDept.id,
+                            programStudiId: defaultProdi.id,
+                        },
+                    });
 
-				const statusCreateDosen = await prisma.pegawai.create({
-					data: dataMaPegawai,
-				});
-				console.log("statusCreateDosen =>", statusCreateDosen);
+                    const role = await prisma.role.findUnique({
+                        where: { name: "mahasiswa" },
+                    });
+                    if (role) {
+                        await prisma.userRole.create({
+                            data: {
+                                userId: user.id,
+                                roleId: role.id,
+                            },
+                        });
+                    }
+                } else if (response.data.user.role === "dosen") {
+                    const defaultDept = await prisma.departemen.findFirst();
+                    const defaultProdi = await prisma.programStudi.findFirst();
 
-				// tabel hak akses
-				const data = {
-					uuid: user.uuid,
-					role: ERole.DOSEN_PEMBIMBING,
-					createdAt: new Date(),
-				} as HakAkses;
-				await prisma.hakAkses.create({ data: data });
+                    if (!defaultDept || !defaultProdi) {
+                        throw new Error(
+                            "Default departemen or prodi not found in database",
+                        );
+                    }
 
-				console.log("statusCreateHakAkses =>", data);
-			}
-		} catch (error) {
-			console.log("error create user mahasiswa =>", error);
-		}
-	},
-	{
-		headers: t.Object({
-			authorization: t.String(),
-		}),
-	},
+                    await prisma.pegawai.create({
+                        data: {
+                            userId: user.id,
+                            nip: username.split("@")[0] || "24060123456789",
+                            jabatan: "Dosen",
+                            noHp: "-",
+                            departemenId: defaultDept.id,
+                            programStudiId: defaultProdi.id,
+                        },
+                    });
+
+                    const role = await prisma.role.findUnique({
+                        where: { name: "dosen_pembimbing" },
+                    });
+                    if (role) {
+                        await prisma.userRole.create({
+                            data: {
+                                userId: user.id,
+                                roleId: role.id,
+                            },
+                        });
+                    }
+                }
+            }
+
+            return { success: true, user: user };
+        } catch (error) {
+            console.error("Error creating user from SSO =>", error);
+            set.status = 500;
+            return {
+                error: "Internal server error during user synchronization",
+            };
+        }
+    },
+    {
+        headers: t.Object({
+            authorization: t.String(),
+        }),
+    },
 );
