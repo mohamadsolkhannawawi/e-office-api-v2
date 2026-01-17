@@ -219,9 +219,9 @@ async function main() {
 
     console.log("User Upserted");
 
-    // 2. Create Permissions
+    // 2. Buat Izin (Permissions)
     const permissions = await Promise.all([
-        // Departemen permission
+        // Izin Departemen
         Prisma.permission.create({
             data: { resource: "departemen", action: "create" },
         }),
@@ -263,7 +263,7 @@ async function main() {
             data: { resource: "role", action: "delete" },
         }),
 
-        // user include mahasiswa and pegawai
+        // pengguna termasuk mahasiswa dan pegawai
         Prisma.permission.create({
             data: { resource: "user", action: "create" },
         }),
@@ -277,7 +277,7 @@ async function main() {
             data: { resource: "user", action: "delete" },
         }),
 
-        // lettertype
+        // tipe surat
         Prisma.permission.create({
             data: { resource: "letterType", action: "create" },
         }),
@@ -291,7 +291,7 @@ async function main() {
             data: { resource: "letterType", action: "delete" },
         }),
 
-        // letter template
+        // templat surat
         Prisma.permission.create({
             data: { resource: "letterTemplate", action: "create" },
         }),
@@ -305,7 +305,7 @@ async function main() {
             data: { resource: "letterTemplate", action: "delete" },
         }),
 
-        // main transaction
+        // transaksi utama
         Prisma.permission.create({
             data: { resource: "letter", action: "file" },
         }),
@@ -325,8 +325,8 @@ async function main() {
 
     console.log("Permissions upserted");
 
-    // 3. Assign Permissions to Roles
-    // Admin gets all permissions
+    // 3. Tetapkan Izin ke Peran
+    // Admin mendapatkan semua izin
     await Promise.all(
         permissions.map((permission) =>
             Prisma.rolePermission.create({
@@ -338,7 +338,7 @@ async function main() {
         )
     );
 
-    // // Dosen gets letter approval permissions
+    // // Dosen mendapatkan izin persetujuan surat
     // await Promise.all(
     // 	permissions
     // 		.filter((p) =>
@@ -356,7 +356,7 @@ async function main() {
     // 		),
     // );
 
-    // Mahasiswa gets letter create and read
+    // Mahasiswa mendapatkan izin buat dan baca surat
     await Promise.all(
         permissions
             .filter((p) =>
@@ -376,7 +376,7 @@ async function main() {
 
     console.log("Assigned permissions to roles");
 
-    // Create Departemen
+    // Buat Departemen
     const departemenMatematika = await Prisma.departemen.upsert({
         where: {
             code: "fsm_math",
@@ -587,7 +587,7 @@ async function main() {
         },
     });
 
-    console.log("Created program studi");
+    console.log("Program studi berhasil dibuat");
 
     // Seed LetterType untuk Surat Rekomendasi Beasiswa
     const letterTypeSuratRekomendasi = await Prisma.letterType.upsert({
@@ -601,7 +601,7 @@ async function main() {
     });
     console.log("Created LetterType: surat-rekomendasi-beasiswa");
 
-    // Create Users
+    // Buat Pengguna
     const adminUser = await Prisma.user.create({
         data: {
             name: "Admin Sistem",
@@ -610,7 +610,7 @@ async function main() {
         },
     });
 
-    // Create Account
+    // Buat Akun
 
     const response = await auth.api.signUpEmail({
         body: {
@@ -627,7 +627,7 @@ async function main() {
         },
     });
 
-    console.log("Assigned roles to users");
+    console.log("Peran telah ditetapkan ke pengguna");
 }
 
 main()
