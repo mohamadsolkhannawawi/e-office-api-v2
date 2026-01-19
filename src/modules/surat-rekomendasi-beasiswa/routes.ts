@@ -7,26 +7,21 @@ const suratRekomendasiRoutes = new Elysia({
     tags: ["surat-rekomendasi"],
 })
     /**
-     * POST /surat-rekomendasi/applications
-     * Create new scholarship application
+     * Applications Management
      */
     .post("/applications", ApplicationController.createApplication, {
         body: t.Object({
             namaBeasiswa: t.String(),
-            values: t.Record(t.String(), t.Any()), // JSON dengan ipk, ips, noHp, dll
+            values: t.Record(t.String(), t.Any()),
         }),
     })
-
-    /**
-     * GET /surat-rekomendasi/applications
-     * List all scholarship applications
-     */
-    .get("/applications", ApplicationController.listApplications)
-
-    /**
-     * GET /surat-rekomendasi/applications/:applicationId
-     * Get application detail
-     */
+    .get("/applications", ApplicationController.listApplications, {
+        query: t.Optional(
+            t.Object({
+                status: t.Optional(t.String()),
+            }),
+        ),
+    })
     .get(
         "/applications/:applicationId",
         ApplicationController.getApplicationDetail,
@@ -36,10 +31,23 @@ const suratRekomendasiRoutes = new Elysia({
             }),
         },
     )
+    .post(
+        "/applications/:applicationId/verify",
+        ApplicationController.verifyApplication,
+        {
+            params: t.Object({
+                applicationId: t.String(),
+            }),
+            body: t.Object({
+                action: t.String({ enum: ["approve", "reject", "revision"] }),
+                notes: t.Optional(t.String()),
+            }),
+        },
+    )
+    .get("/stats", ApplicationController.getStats)
 
     /**
-     * POST /surat-rekomendasi/:letterInstanceId/upload
-     * Upload attachment
+     * Attachment Handling
      */
     .post("/:letterInstanceId/upload", AttachmentController.uploadAttachment, {
         params: t.Object({
@@ -50,11 +58,6 @@ const suratRekomendasiRoutes = new Elysia({
             category: t.String({ enum: ["Utama", "Tambahan"] }),
         }),
     })
-
-    /**
-     * GET /surat-rekomendasi/:letterInstanceId/attachments
-     * Get all attachments
-     */
     .get(
         "/:letterInstanceId/attachments",
         AttachmentController.getAttachments,
@@ -64,11 +67,6 @@ const suratRekomendasiRoutes = new Elysia({
             }),
         },
     )
-
-    /**
-     * DELETE /surat-rekomendasi/attachments/:attachmentId
-     * Delete attachment
-     */
     .delete(
         "/attachments/:attachmentId",
         AttachmentController.deleteAttachment,
