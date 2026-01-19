@@ -5,7 +5,7 @@ import { auth } from "@backend/lib/auth.ts";
 import { Elysia } from "elysia";
 import { autoload } from "elysia-autoload";
 import env from "env-var";
-import suratRekomendasiRoutes from "./routes/surat-rekomendasi/index.ts";
+import suratRekomendasiRoutes from "./modules/surat-rekomendasi-beasiswa/routes.ts";
 
 export const app = new Elysia()
     .use(swagger())
@@ -15,7 +15,7 @@ export const app = new Elysia()
             methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             credentials: true,
             allowedHeaders: ["Content-Type", "Authorization"],
-        })
+        }),
     )
     .use(serverTiming())
     // Mount routes under /api prefix to match Next.js rewrite
@@ -27,7 +27,7 @@ export const app = new Elysia()
                 typeName: "App",
                 useExport: true,
             },
-        })
+        }),
     );
 
 export type App = typeof app;
