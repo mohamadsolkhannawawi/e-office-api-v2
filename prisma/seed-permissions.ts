@@ -1,4 +1,4 @@
-import { Prisma } from "@backend/db/index.ts";
+import { Prisma } from "../src/db/index.ts";
 
 /**
  * Seed Permissions for All Roles

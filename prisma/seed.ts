@@ -1,4 +1,4 @@
-import { PrismaClient } from "../src/generated/prisma/client.js";
+import { PrismaClient } from "../src/db/index.ts";
 import { hashPassword } from "better-auth/crypto";
 
 const prisma = new PrismaClient();
@@ -84,18 +84,17 @@ async function main() {
         });
 
         // Create Better Auth account with password
+        const accountId = `${user.id}_credential`;
+
         await prisma.account.upsert({
             where: {
-                userId_providerId: {
-                    userId: user.id,
-                    providerId: "credential", // Better Auth uses 'credential' for email/password
-                },
+                id: accountId,
             },
             update: {
                 password: hashedPassword,
             },
             create: {
-                id: `${user.id}_credential`, // Generate unique ID
+                id: accountId,
                 userId: user.id,
                 providerId: "credential", // Better Auth uses 'credential' for email/password
                 accountId: email,
@@ -226,7 +225,7 @@ async function main() {
     console.log("Users created.");
 
     // 5. Create Letter Type (Letter Definition)
-    await prisma.letterType.upsert({
+    const srbType = await prisma.letterType.upsert({
         where: { id: "srb-type-id" }, // Using fixed ID for simplicity in seeding
         update: {},
         create: {
@@ -237,8 +236,121 @@ async function main() {
     });
     console.log("Letter Type created.");
 
-    // 6. Seed Permissions
-    const { seedPermissions } = await import("./seed-permissions.js");
+    // 6. Create SRB Template (Version 1)
+    await prisma.letterTemplate.create({
+        data: {
+            letterTypeId: srbType.id,
+            versionName: "v1-standard",
+            templateEngine: "HANDLEBARS",
+            schemaDefinition: {
+                title: "Surat Rekomendasi Beasiswa",
+                type: "object",
+                properties: {
+                    nama_lengkap: { type: "string", title: "Nama Lengkap" },
+                    role: {
+                        type: "string",
+                        title: "Role",
+                        default: "Mahasiswa",
+                    },
+                    nim: { type: "string", title: "NIM" },
+                    email: { type: "string", title: "Email" },
+                    departemen: { type: "string", title: "Departemen" },
+                    prodi: { type: "string", title: "Program Studi" },
+                    tempat_lahir: { type: "string", title: "Tempat Lahir" },
+                    tanggal_lahir: {
+                        type: "string",
+                        format: "date",
+                        title: "Tanggal Lahir",
+                    },
+                    no_hp: { type: "string", title: "Nomor HP" },
+                    semester: { type: "integer", title: "Semester" },
+                    ipk: { type: "number", title: "IPK" },
+                    ips: { type: "number", title: "IPS (Semester Lalu)" },
+                    nama_beasiswa: { type: "string", title: "Nama Beasiswa" },
+                    lampiran: {
+                        type: "object",
+                        title: "Lampiran",
+                        properties: {
+                            ktm: {
+                                type: "string",
+                                format: "uri",
+                                title: "KTM",
+                            },
+                            khs: {
+                                type: "string",
+                                format: "uri",
+                                title: "KHS",
+                            },
+                        },
+                    },
+                },
+                required: ["nama_lengkap", "nim", "semester", "nama_beasiswa"],
+            },
+            formFields: [
+                { key: "nama_lengkap", label: "Nama Lengkap", readonly: true }, // Auto-filled
+                { key: "nim", label: "NIM", readonly: true }, // Auto-filled
+                { key: "email", label: "Email", readonly: true }, // Auto-filled
+                { key: "departemen", label: "Departemen", readonly: true }, // Auto-filled
+                { key: "prodi", label: "Program Studi", readonly: true }, // Auto-filled
+                { key: "tempat_lahir", label: "Tempat Lahir", required: true },
+                {
+                    key: "tanggal_lahir",
+                    label: "Tanggal Lahir",
+                    type: "date",
+                    required: true,
+                },
+                {
+                    key: "no_hp",
+                    label: "Nomor HP",
+                    type: "tel",
+                    required: true,
+                },
+                {
+                    key: "semester",
+                    label: "Semester",
+                    type: "number",
+                    required: true,
+                },
+                {
+                    key: "ipk",
+                    label: "IPK",
+                    type: "number",
+                    step: 0.01,
+                    required: true,
+                },
+                {
+                    key: "ips",
+                    label: "IPS",
+                    type: "number",
+                    step: 0.01,
+                    required: true,
+                },
+                {
+                    key: "nama_beasiswa",
+                    label: "Nama Beasiswa",
+                    required: true,
+                },
+                {
+                    key: "lampiran.ktm",
+                    label: "KTM (Kartu Tanda Mahasiswa)",
+                    type: "file",
+                    accept: ".pdf,.jpg,.png",
+                    required: true,
+                },
+                {
+                    key: "lampiran.khs",
+                    label: "KHS (Kartu Hasil Studi)",
+                    type: "file",
+                    accept: ".pdf,.jpg,.png",
+                    required: true,
+                },
+            ],
+        },
+    });
+    console.log("Letter Template (v1) created.");
+
+    // 7. Seed Permissions
+    const { seedPermissions } = await import("./seed-permissions.ts");
     await seedPermissions();
 
     console.log("Seeding finished.");
@@ -249,7 +361,11 @@ main()
         await prisma.$disconnect();
     })
     .catch(async (e) => {
+        console.error("SEEDING FAILED:");
         console.error(e);
+        if (e instanceof Error) {
+            console.error(e.stack);
+        }
         await prisma.$disconnect();
         process.exit(1);
     });
