@@ -12,6 +12,7 @@ export default new Elysia().use(authGuardPlugin).get(
             return { error: "Unauthorized" };
         }
 
+        console.log(`>>> FETCHING ME FOR USER: ${user.id} (${user.email})`);
         const fullUser = await db.user.findUnique({
             where: { id: user.id },
             include: {
@@ -25,9 +26,17 @@ export default new Elysia().use(authGuardPlugin).get(
         });
 
         if (!fullUser) {
+            console.log(`>>> USER NOT FOUND IN DB: ${user.id}`);
             set.status = 404;
             return { error: "User not found" };
         }
+
+        console.log(">>> FULL USER DATA:", {
+            id: fullUser.id,
+            email: fullUser.email,
+            hasMahasiswa: !!fullUser.mahasiswa,
+            mahasiswaNim: fullUser.mahasiswa?.nim,
+        });
 
         return fullUser;
     },
