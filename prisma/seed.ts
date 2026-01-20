@@ -66,6 +66,8 @@ async function main() {
                 ips: number;
                 tahunMasuk: string;
                 noHp: string;
+                tempatLahir?: string;
+                tanggalLahir?: Date;
             };
             pegawai?: { nip: string; jabatan: string; noHp: string };
         },
@@ -158,6 +160,8 @@ async function main() {
                 ips: 3.8,
                 tahunMasuk: "2020",
                 noHp: "081234567890",
+                tempatLahir: "Semarang",
+                tanggalLahir: new Date("2002-05-15"),
             },
         },
     );
