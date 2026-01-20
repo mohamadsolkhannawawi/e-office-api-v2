@@ -9,16 +9,37 @@ export class ApplicationService {
         values: any;
         userId: string;
         letterTypeId: string;
+        status?: string;
     }) {
         return await db.letterInstance.create({
             data: {
                 scholarshipName: data.namaBeasiswa,
                 values: data.values || {},
-                status: "PENDING",
+                status: (data.status as any) || "PENDING",
                 currentStep: 1,
                 letterTypeId: data.letterTypeId,
                 createdById: data.userId,
                 schema: {},
+            },
+        });
+    }
+
+    static async updateApplicationData(
+        id: string,
+        data: {
+            namaBeasiswa?: string;
+            values?: any;
+            status?: string;
+        },
+    ) {
+        return await db.letterInstance.update({
+            where: { id },
+            data: {
+                ...(data.namaBeasiswa
+                    ? { scholarshipName: data.namaBeasiswa }
+                    : {}),
+                ...(data.values ? { values: data.values } : {}),
+                ...(data.status ? { status: data.status as any } : {}),
             },
         });
     }
@@ -29,6 +50,8 @@ export class ApplicationService {
         letterTypeId: string;
         page?: number;
         limit?: number;
+        createdById?: string;
+        currentRoleId?: string;
     }) {
         const { page = 1, limit = 20 } = filters;
         const skip = (page - 1) * limit;
@@ -38,6 +61,12 @@ export class ApplicationService {
             ...(filters.status ? { status: filters.status as any } : {}),
             ...(filters.currentStep !== undefined
                 ? { currentStep: filters.currentStep }
+                : {}),
+            ...(filters.createdById
+                ? { createdById: filters.createdById }
+                : {}),
+            ...(filters.currentRoleId
+                ? { currentRoleId: filters.currentRoleId }
                 : {}),
         };
 
@@ -98,16 +127,54 @@ export class ApplicationService {
 
     static async updateApplicationStatus(
         id: string,
-        data: { status: string; currentStep?: number },
+        data: {
+            status: string;
+            currentStep?: number;
+            currentRoleId?: string | null;
+            values?: any;
+            letterNumber?: string;
+            publishedAt?: Date;
+        },
+        history: {
+            actorId: string;
+            action: string;
+            note?: string;
+        },
     ) {
-        return await db.letterInstance.update({
-            where: { id },
-            data: {
-                status: data.status as any,
-                ...(data.currentStep !== undefined
-                    ? { currentStep: data.currentStep }
-                    : {}),
-            },
+        return await db.$transaction(async (tx) => {
+            // 1. Update Instance
+            const updated = await tx.letterInstance.update({
+                where: { id },
+                data: {
+                    status: data.status as any,
+                    ...(data.currentStep !== undefined
+                        ? { currentStep: data.currentStep }
+                        : {}),
+                    ...(data.currentRoleId !== undefined
+                        ? { currentRoleId: data.currentRoleId }
+                        : {}),
+                    ...(data.values ? { values: data.values } : {}),
+                    ...(data.letterNumber
+                        ? { letterNumber: data.letterNumber }
+                        : {}),
+                    ...(data.publishedAt
+                        ? { publishedAt: data.publishedAt }
+                        : {}),
+                },
+            });
+
+            // 2. Create History Log
+            await tx.letterHistory.create({
+                data: {
+                    letterInstanceId: id,
+                    actorId: history.actorId,
+                    action: history.action,
+                    note: history.note,
+                    status: data.status,
+                },
+            });
+
+            return updated;
         });
     }
 
