@@ -248,9 +248,15 @@ export class ApplicationController {
             const formData = {
                 namaLengkap: application.createdBy?.name || "",
                 email: application.createdBy?.email || "",
-                nim: mahasiswa?.nim,
-                departemen: mahasiswa?.departemen?.name,
-                programStudi: mahasiswa?.programStudi?.name,
+                nim: mahasiswa?.nim || "",
+                departemen: mahasiswa?.departemen?.name || "",
+                programStudi: mahasiswa?.programStudi?.name || "",
+                tempatLahir: mahasiswa?.tempatLahir || "",
+                tanggalLahir: mahasiswa?.tanggalLahir || "",
+                noHp: mahasiswa?.noHp || "",
+                semester: mahasiswa?.semester ? String(mahasiswa.semester) : "",
+                ipk: mahasiswa?.ipk ? String(mahasiswa.ipk) : "",
+                ips: mahasiswa?.ips ? String(mahasiswa.ips) : "",
                 ...(application.values && typeof application.values === "object"
                     ? application.values
                     : {}),
