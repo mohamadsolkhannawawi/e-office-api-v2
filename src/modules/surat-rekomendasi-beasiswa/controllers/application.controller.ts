@@ -174,6 +174,10 @@ export class ApplicationController {
                 ];
             }
 
+            if (status === "FINISHED") {
+                filters.status = ["COMPLETED", "REJECTED"];
+            }
+
             // STRICT FILTERING BASED ON ROLE
             if (user.role === "MAHASISWA") {
                 filters.createdById = user.id;
