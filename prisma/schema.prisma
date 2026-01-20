@@ -290,6 +290,7 @@ enum LetterStatus {
   IN_PROGRESS
   COMPLETED
   REJECTED
+  REVISION
 }
 
 model LetterInstance {
