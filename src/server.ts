@@ -41,13 +41,37 @@ export const app = new Elysia()
             });
             const roles = userRoles.map((ur) => ur.role.name);
             console.log(">>> ROLES INJECTED:", roles);
-            return {
+
+            // Set a separate cookie for middleware to access roles
+            const responseData = {
                 ...session,
                 user: {
                     ...session.user,
                     roles,
                 },
             };
+
+            // Elysia handles return object as JSON response.
+            // To set a cookie, we can use the 'set' property from the context if we deconstruct it,
+            // or return a Response object with headers.
+            // Let's use Response object to be explicit about headers.
+
+            const response = new Response(JSON.stringify(responseData), {
+                headers: {
+                    "Content-Type": "application/json",
+                },
+            });
+
+            // Append cookie header
+            // Normalize roles to string, joined by comma
+            const rolesString = roles.join(",");
+            const isProd = process.env.NODE_ENV === "production";
+            response.headers.append(
+                "Set-Cookie",
+                `user_roles=${rolesString}; Path=/; HttpOnly; SameSite=Lax; ${isProd ? "Secure;" : ""}`,
+            );
+
+            return response;
         }
         console.log(">>> NO SESSION OR USER FOUND IN MANUAL HANDLER");
         return session;
