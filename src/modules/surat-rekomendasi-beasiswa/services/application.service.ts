@@ -55,8 +55,12 @@ export class ApplicationService {
         jenisBeasiswa?: string;
         search?: string;
         excludeStatus?: string[];
+        startDate?: string;
+
+        endDate?: string;
+        sortOrder?: "asc" | "desc";
     }) {
-        const { page = 1, limit = 20, search } = filters;
+        const { page = 1, limit = 20, search, sortOrder = "desc" } = filters;
         const skip = (page - 1) * limit;
 
         const andConditions: any[] = [{ letterTypeId: filters.letterTypeId }];
@@ -92,6 +96,13 @@ export class ApplicationService {
                     equals: filters.jenisBeasiswa,
                 },
             });
+        }
+
+        if (filters.startDate || filters.endDate) {
+            const dateFilter: any = {};
+            if (filters.startDate) dateFilter.gte = new Date(filters.startDate);
+            if (filters.endDate) dateFilter.lte = new Date(filters.endDate);
+            andConditions.push({ createdAt: dateFilter });
         }
 
         if (search && search.trim() !== "") {
@@ -148,7 +159,7 @@ export class ApplicationService {
         const [items, total] = await Promise.all([
             db.letterInstance.findMany({
                 where,
-                orderBy: { createdAt: "desc" },
+                orderBy: { createdAt: sortOrder },
                 skip,
                 take: limit,
                 include: {

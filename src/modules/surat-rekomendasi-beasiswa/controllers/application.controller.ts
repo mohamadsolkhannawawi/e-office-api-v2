@@ -169,6 +169,9 @@ export class ApplicationController {
                 mode,
                 jenisBeasiswa,
                 search,
+                startDate,
+                endDate,
+                sortOrder,
             } = query || {};
 
             const filters: any = {
@@ -176,9 +179,12 @@ export class ApplicationController {
                 status,
                 currentStep: currentStep ? Number(currentStep) : undefined,
                 page: page ? Number(page) : undefined,
+                sortOrder,
                 limit: limit ? Number(limit) : undefined,
                 jenisBeasiswa,
                 search,
+                startDate,
+                endDate,
             };
 
             // Map IN_PROGRESS to multiple statuses for students
