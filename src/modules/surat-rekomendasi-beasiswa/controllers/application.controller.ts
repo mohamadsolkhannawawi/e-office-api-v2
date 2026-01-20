@@ -214,7 +214,9 @@ export class ApplicationController {
                         status: app.status,
                         currentStep: app.currentStep,
                         applicantName: app.createdBy?.name || "",
+                        updatedAt: app.updatedAt,
                         formData: {
+                            ...values, // Include all stored form values
                             nim: mahasiswa?.nim || (values as any).nim || "",
                             departemen:
                                 mahasiswa?.departemen?.name ||
