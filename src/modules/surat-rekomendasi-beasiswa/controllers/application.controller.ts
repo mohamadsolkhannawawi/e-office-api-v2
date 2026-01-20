@@ -212,15 +212,14 @@ export class ApplicationController {
             if (isMahasiswa) {
                 filters.createdById = user.id;
             } else {
-                // For reviewers/staff
+                // For reviewers/staff, exclude DRAFT applications
+                filters.excludeStatus = ["DRAFT"];
+
                 if (mode === "inbox") {
                     // We need to filter by currentRoleId matching user's active role
                     // Assuming user.roleId is available or we need to look it up
                     // Since we might not have user.roleId directly, we might need to fetch it or rely on `user.role` mapping if `currentRoleId` was storing Role Name (it's likely Role ID)
-                    // Let's assume for now we list all for staff, or filter if we can.
-                    // IMPORTANT: To make "Inbox" work, we need to know the Role ID of the logged in user.
-                    // If `user.role` is the Role Code (e.g. SUPERVISOR_AKADEMIK), we need its ID.
-                    // For now, let's just return all for specific status if mode is not inbox,
+                    // Let's assume for now we list all for specific status if mode is not inbox,
                     // But strictly, we should filter.
                     // Let's defer strict RoleID filtering to a follow up if we don't have RoleID.
                     // Check if `user` has `roleId`.
