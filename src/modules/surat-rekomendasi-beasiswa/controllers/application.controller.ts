@@ -177,7 +177,7 @@ export class ApplicationController {
             const filters: any = {
                 letterTypeId: "srb-type-id",
                 status,
-                currentStep: currentStep ? Number(currentStep) : undefined,
+                // Note: currentStep is handled below based on mode (pending/processed)
                 page: page ? Number(page) : undefined,
                 sortOrder,
                 limit: limit ? Number(limit) : undefined,
@@ -221,17 +221,19 @@ export class ApplicationController {
                 // For reviewers/staff, exclude DRAFT applications
                 filters.excludeStatus = ["DRAFT"];
 
-                if (mode === "inbox") {
-                    // We need to filter by currentRoleId matching user's active role
-                    // Assuming user.roleId is available or we need to look it up
-                    // Since we might not have user.roleId directly, we might need to fetch it or rely on `user.role` mapping if `currentRoleId` was storing Role Name (it's likely Role ID)
-                    // Let's assume for now we list all for specific status if mode is not inbox,
-                    // But strictly, we should filter.
-                    // Let's defer strict RoleID filtering to a follow up if we don't have RoleID.
-                    // Check if `user` has `roleId`.
-                    if (user.roleId) {
-                        filters.currentRoleId = user.roleId;
-                    }
+                // Mode: "pending" - Show applications currently at this step waiting for action
+                // Mode: "processed" - Show applications that have been processed by this role (based on history)
+                if (mode === "pending" && currentStep) {
+                    // Applications currently at this step
+                    filters.currentStep = Number(currentStep);
+                    // Exclude COMPLETED and REJECTED for pending list
+                    filters.excludeStatus = ["DRAFT", "COMPLETED", "REJECTED"];
+                } else if (mode === "processed" && currentStep) {
+                    // Applications that have passed this step (currentStep > the role's step)
+                    // OR applications that are COMPLETED/REJECTED (for all roles that processed them)
+                    filters.processedByStep = Number(currentStep);
+                } else if (mode === "inbox" && user.roleId) {
+                    filters.currentRoleId = user.roleId;
                 }
             }
 
@@ -523,9 +525,38 @@ export class ApplicationController {
         }
     }
 
-    static async getStats({ set }: { set: any }) {
+    static async getStats({
+        set,
+        user,
+        query,
+    }: {
+        set: any;
+        user: any;
+        query: any;
+    }) {
         try {
-            const stats = await ApplicationService.getStats("srb-type-id");
+            const filters: any = {};
+
+            const userRoles = Array.isArray(user?.roles)
+                ? user.roles
+                : [user?.role].filter(Boolean);
+            const isMahasiswa = userRoles.some(
+                (r: string) => r.toUpperCase() === "MAHASISWA",
+            );
+
+            if (isMahasiswa) {
+                filters.createdById = user.id;
+            }
+
+            // Allow manual filtering by student ID if provided in query (optional)
+            if (query?.studentId) {
+                filters.createdById = query.studentId;
+            }
+
+            const stats = await ApplicationService.getStats(
+                "srb-type-id",
+                filters,
+            );
             return { success: true, data: stats };
         } catch (error) {
             console.error("Get stats error:", error);
