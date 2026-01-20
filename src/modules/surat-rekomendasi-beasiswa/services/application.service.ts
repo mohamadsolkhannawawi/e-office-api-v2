@@ -45,20 +45,25 @@ export class ApplicationService {
     }
 
     static async listApplications(filters: {
-        status?: string;
+        status?: string | string[];
         currentStep?: number;
         letterTypeId: string;
         page?: number;
         limit?: number;
         createdById?: string;
         currentRoleId?: string;
+        jenisBeasiswa?: string;
     }) {
         const { page = 1, limit = 20 } = filters;
         const skip = (page - 1) * limit;
 
         const where: any = {
             letterTypeId: filters.letterTypeId,
-            ...(filters.status ? { status: filters.status as any } : {}),
+            ...(filters.status
+                ? Array.isArray(filters.status)
+                    ? { status: { in: filters.status as any } }
+                    : { status: filters.status as any }
+                : {}),
             ...(filters.currentStep !== undefined
                 ? { currentStep: filters.currentStep }
                 : {}),
@@ -67,6 +72,14 @@ export class ApplicationService {
                 : {}),
             ...(filters.currentRoleId
                 ? { currentRoleId: filters.currentRoleId }
+                : {}),
+            ...(filters.jenisBeasiswa
+                ? {
+                      values: {
+                          path: ["jenisBeasiswa"],
+                          equals: filters.jenisBeasiswa,
+                      },
+                  }
                 : {}),
         };
 

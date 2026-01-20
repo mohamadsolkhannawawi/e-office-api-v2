@@ -152,7 +152,8 @@ export class ApplicationController {
         user: any;
     }) {
         try {
-            const { status, currentStep, page, limit, mode } = query || {};
+            const { status, currentStep, page, limit, mode, jenisBeasiswa } =
+                query || {};
 
             const filters: any = {
                 letterTypeId: "srb-type-id",
@@ -160,7 +161,18 @@ export class ApplicationController {
                 currentStep: currentStep ? Number(currentStep) : undefined,
                 page: page ? Number(page) : undefined,
                 limit: limit ? Number(limit) : undefined,
+                jenisBeasiswa,
             };
+
+            // Map IN_PROGRESS to multiple statuses for students
+            if (status === "IN_PROGRESS") {
+                filters.status = [
+                    "PENDING",
+                    "IN_PROGRESS",
+                    "REVISION",
+                    "REJECTED",
+                ];
+            }
 
             // STRICT FILTERING BASED ON ROLE
             if (user.role === "MAHASISWA") {
