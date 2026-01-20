@@ -54,6 +54,7 @@ export class ApplicationService {
         currentRoleId?: string;
         jenisBeasiswa?: string;
         search?: string;
+        excludeStatus?: string[];
     }) {
         const { page = 1, limit = 20, search } = filters;
         const skip = (page - 1) * limit;
@@ -66,6 +67,10 @@ export class ApplicationService {
             } else {
                 andConditions.push({ status: filters.status });
             }
+        }
+
+        if (filters.excludeStatus) {
+            andConditions.push({ status: { notIn: filters.excludeStatus } });
         }
 
         if (filters.currentStep !== undefined) {
@@ -191,6 +196,12 @@ export class ApplicationService {
                         },
                     },
                 },
+                history: {
+                    orderBy: { createdAt: "desc" },
+                    include: {
+                        actor: true,
+                    },
+                },
             },
         });
     }
@@ -249,27 +260,81 @@ export class ApplicationService {
     }
 
     static async getStats(letterTypeId: string) {
-        const [total, pending, inProgress, completed, rejected, byDepartment] =
-            await Promise.all([
-                db.letterInstance.count({ where: { letterTypeId } }),
-                db.letterInstance.count({
-                    where: { letterTypeId, status: "PENDING" },
-                }),
-                db.letterInstance.count({
-                    where: { letterTypeId, status: "IN_PROGRESS" },
-                }),
-                db.letterInstance.count({
-                    where: { letterTypeId, status: "COMPLETED" },
-                }),
-                db.letterInstance.count({
-                    where: { letterTypeId, status: "REJECTED" },
-                }),
-                db.letterInstance.groupBy({
-                    by: ["createdById"],
-                    where: { letterTypeId },
-                    _count: true,
-                }),
-            ]);
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const startOfLast30Days = new Date();
+        startOfLast30Days.setDate(now.getDate() - 30);
+
+        const [
+            total,
+            pending,
+            inProgress,
+            completed,
+            rejected,
+            totalCreatedThisMonth,
+            totalCompletedThisMonth,
+            trendData,
+        ] = await Promise.all([
+            // Overall counts (excluding drafts)
+            db.letterInstance.count({
+                where: { letterTypeId, status: { not: "DRAFT" } },
+            }),
+            db.letterInstance.count({
+                where: { letterTypeId, status: "PENDING" },
+            }),
+            db.letterInstance.count({
+                where: { letterTypeId, status: "IN_PROGRESS" },
+            }),
+            db.letterInstance.count({
+                where: { letterTypeId, status: "COMPLETED" },
+            }),
+            db.letterInstance.count({
+                where: { letterTypeId, status: "REJECTED" },
+            }),
+            // Monthly stats
+            db.letterInstance.count({
+                where: {
+                    letterTypeId,
+                    createdAt: { gte: startOfMonth },
+                    status: { not: "DRAFT" },
+                },
+            }),
+            db.letterInstance.count({
+                where: {
+                    letterTypeId,
+                    status: "COMPLETED",
+                    updatedAt: { gte: startOfMonth },
+                },
+            }),
+            // Trend data (grouped by date) - requires processing
+            db.letterInstance.findMany({
+                where: {
+                    letterTypeId,
+                    createdAt: { gte: startOfLast30Days },
+                    status: { not: "DRAFT" },
+                },
+                select: { createdAt: true },
+            }),
+        ]);
+
+        // Process trend data
+        const trendMap = new Map<string, number>();
+        for (let i = 0; i < 30; i++) {
+            const date = new Date();
+            date.setDate(now.getDate() - i);
+            trendMap.set(date.toISOString().split("T")[0] || "", 0);
+        }
+
+        trendData.forEach((item) => {
+            const dateStr = item.createdAt.toISOString().split("T")[0] || "";
+            if (dateStr && trendMap.has(dateStr)) {
+                trendMap.set(dateStr, (trendMap.get(dateStr) || 0) + 1);
+            }
+        });
+
+        const trend = Array.from(trendMap.entries())
+            .map(([date, count]) => ({ date, count }))
+            .reverse();
 
         return {
             total,
@@ -277,7 +342,15 @@ export class ApplicationService {
             inProgress,
             completed,
             rejected,
-            departmentCount: byDepartment.length,
+            totalCreatedThisMonth,
+            totalCompletedThisMonth,
+            trend,
+            distribution: {
+                pending,
+                inProgress,
+                completed,
+                rejected,
+            },
         };
     }
 }
