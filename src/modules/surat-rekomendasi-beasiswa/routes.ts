@@ -69,6 +69,10 @@ const suratRekomendasiRoutes = new Elysia({
         query: t.Optional(
             t.Object({
                 status: t.Optional(t.String()),
+                page: t.Optional(t.String()),
+                limit: t.Optional(t.String()),
+                currentStep: t.Optional(t.String()),
+                mode: t.Optional(t.String()),
             }),
         ),
     })
