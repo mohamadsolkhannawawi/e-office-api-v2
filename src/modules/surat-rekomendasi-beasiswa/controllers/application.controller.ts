@@ -152,8 +152,24 @@ export class ApplicationController {
         user: any;
     }) {
         try {
-            const { status, currentStep, page, limit, mode, jenisBeasiswa } =
-                query || {};
+            console.log("ListApplications Request:", {
+                user: {
+                    id: user?.id,
+                    email: user?.email,
+                    role: user?.role,
+                    roles: user?.roles,
+                },
+                query,
+            });
+            const {
+                status,
+                currentStep,
+                page,
+                limit,
+                mode,
+                jenisBeasiswa,
+                search,
+            } = query || {};
 
             const filters: any = {
                 letterTypeId: "srb-type-id",
@@ -162,6 +178,7 @@ export class ApplicationController {
                 page: page ? Number(page) : undefined,
                 limit: limit ? Number(limit) : undefined,
                 jenisBeasiswa,
+                search,
             };
 
             // Map IN_PROGRESS to multiple statuses for students
@@ -179,7 +196,20 @@ export class ApplicationController {
             }
 
             // STRICT FILTERING BASED ON ROLE
-            if (user.role === "MAHASISWA") {
+            const userRoles = Array.isArray(user?.roles)
+                ? user.roles
+                : [user?.role].filter(Boolean);
+            const isMahasiswa = userRoles.some(
+                (r: string) => r.toUpperCase() === "MAHASISWA",
+            );
+
+            console.log("Role detection:", {
+                userRoles,
+                isMahasiswa,
+                userId: user?.id,
+            });
+
+            if (isMahasiswa) {
                 filters.createdById = user.id;
             } else {
                 // For reviewers/staff
