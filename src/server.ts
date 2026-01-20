@@ -82,6 +82,7 @@ export const app = new Elysia()
     .group("/api", (api) => api.use(suratRekomendasiRoutes))
     .use(
         await autoload({
+            prefix: "/api",
             types: {
                 output: "./autogen.routes.ts",
                 typeName: "App",
