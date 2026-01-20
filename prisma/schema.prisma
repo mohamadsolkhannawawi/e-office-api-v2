@@ -286,6 +286,7 @@ model LetterTemplate {
 }
 
 enum LetterStatus {
+  DRAFT
   PENDING
   IN_PROGRESS
   COMPLETED
