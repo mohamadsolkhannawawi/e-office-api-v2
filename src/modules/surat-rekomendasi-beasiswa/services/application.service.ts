@@ -56,9 +56,9 @@ export class ApplicationService {
         search?: string;
         excludeStatus?: string[];
         startDate?: string;
-
         endDate?: string;
         sortOrder?: "asc" | "desc";
+        processedByStep?: number; // For "selesai" pages - show apps processed by this step
     }) {
         const { page = 1, limit = 20, search, sortOrder = "desc" } = filters;
         const skip = (page - 1) * limit;
@@ -87,6 +87,17 @@ export class ApplicationService {
 
         if (filters.currentRoleId) {
             andConditions.push({ currentRoleId: filters.currentRoleId });
+        }
+
+        // Filter for "selesai" pages - applications that have been processed by this step
+        // Either currentStep > processedByStep (moved forward) OR status is terminal (COMPLETED/REJECTED)
+        if (filters.processedByStep !== undefined) {
+            andConditions.push({
+                OR: [
+                    { currentStep: { gt: filters.processedByStep } },
+                    { status: { in: ["COMPLETED", "REJECTED"] } },
+                ],
+            });
         }
 
         if (filters.jenisBeasiswa && filters.jenisBeasiswa !== "ALL") {
@@ -270,11 +281,18 @@ export class ApplicationService {
         });
     }
 
-    static async getStats(letterTypeId: string) {
+    static async getStats(letterTypeId: string, filters: any = {}) {
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const startOfLast30Days = new Date();
         startOfLast30Days.setDate(now.getDate() - 30);
+
+        // Build base where clause similar to listApplications
+        const baseWhere: any = { letterTypeId, status: { not: "DRAFT" } };
+
+        if (filters.createdById) {
+            baseWhere.createdById = filters.createdById;
+        }
 
         const [
             total,
@@ -286,43 +304,41 @@ export class ApplicationService {
             totalCompletedThisMonth,
             trendData,
         ] = await Promise.all([
-            // Overall counts (excluding drafts)
+            // Overall counts
             db.letterInstance.count({
-                where: { letterTypeId, status: { not: "DRAFT" } },
+                where: { ...baseWhere },
             }),
             db.letterInstance.count({
-                where: { letterTypeId, status: "PENDING" },
+                where: { ...baseWhere, status: "PENDING" },
             }),
             db.letterInstance.count({
-                where: { letterTypeId, status: "IN_PROGRESS" },
+                where: { ...baseWhere, status: "IN_PROGRESS" },
             }),
             db.letterInstance.count({
-                where: { letterTypeId, status: "COMPLETED" },
+                where: { ...baseWhere, status: "COMPLETED" },
             }),
             db.letterInstance.count({
-                where: { letterTypeId, status: "REJECTED" },
+                where: { ...baseWhere, status: "REJECTED" },
             }),
             // Monthly stats
             db.letterInstance.count({
                 where: {
-                    letterTypeId,
+                    ...baseWhere,
                     createdAt: { gte: startOfMonth },
-                    status: { not: "DRAFT" },
                 },
             }),
             db.letterInstance.count({
                 where: {
-                    letterTypeId,
+                    ...baseWhere,
                     status: "COMPLETED",
                     updatedAt: { gte: startOfMonth },
                 },
             }),
-            // Trend data (grouped by date) - requires processing
+            // Trend data
             db.letterInstance.findMany({
                 where: {
-                    letterTypeId,
+                    ...baseWhere,
                     createdAt: { gte: startOfLast30Days },
-                    status: { not: "DRAFT" },
                 },
                 select: { createdAt: true },
             }),
