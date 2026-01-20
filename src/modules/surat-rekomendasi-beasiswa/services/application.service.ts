@@ -53,35 +53,92 @@ export class ApplicationService {
         createdById?: string;
         currentRoleId?: string;
         jenisBeasiswa?: string;
+        search?: string;
     }) {
-        const { page = 1, limit = 20 } = filters;
+        const { page = 1, limit = 20, search } = filters;
         const skip = (page - 1) * limit;
 
-        const where: any = {
-            letterTypeId: filters.letterTypeId,
-            ...(filters.status
-                ? Array.isArray(filters.status)
-                    ? { status: { in: filters.status as any } }
-                    : { status: filters.status as any }
-                : {}),
-            ...(filters.currentStep !== undefined
-                ? { currentStep: filters.currentStep }
-                : {}),
-            ...(filters.createdById
-                ? { createdById: filters.createdById }
-                : {}),
-            ...(filters.currentRoleId
-                ? { currentRoleId: filters.currentRoleId }
-                : {}),
-            ...(filters.jenisBeasiswa
-                ? {
-                      values: {
-                          path: ["jenisBeasiswa"],
-                          equals: filters.jenisBeasiswa,
-                      },
-                  }
-                : {}),
-        };
+        const andConditions: any[] = [{ letterTypeId: filters.letterTypeId }];
+
+        if (filters.status) {
+            if (Array.isArray(filters.status)) {
+                andConditions.push({ status: { in: filters.status } });
+            } else {
+                andConditions.push({ status: filters.status });
+            }
+        }
+
+        if (filters.currentStep !== undefined) {
+            andConditions.push({ currentStep: filters.currentStep });
+        }
+
+        if (filters.createdById) {
+            andConditions.push({ createdById: filters.createdById });
+        }
+
+        if (filters.currentRoleId) {
+            andConditions.push({ currentRoleId: filters.currentRoleId });
+        }
+
+        if (filters.jenisBeasiswa && filters.jenisBeasiswa !== "ALL") {
+            andConditions.push({
+                values: {
+                    path: ["jenisBeasiswa"],
+                    equals: filters.jenisBeasiswa,
+                },
+            });
+        }
+
+        if (search && search.trim() !== "") {
+            const searchLower = search.trim();
+            andConditions.push({
+                OR: [
+                    {
+                        scholarshipName: {
+                            contains: searchLower,
+                            mode: "insensitive",
+                        },
+                    },
+                    {
+                        createdBy: {
+                            name: {
+                                contains: searchLower,
+                                mode: "insensitive",
+                            },
+                        },
+                    },
+                    {
+                        createdBy: {
+                            mahasiswa: {
+                                nim: {
+                                    contains: searchLower,
+                                    mode: "insensitive",
+                                },
+                            },
+                        },
+                    },
+                    {
+                        values: {
+                            path: ["namaBeasiswa"],
+                            string_contains: searchLower,
+                        },
+                    },
+                    {
+                        values: {
+                            path: ["namaLengkap"],
+                            string_contains: searchLower,
+                        },
+                    },
+                ],
+            });
+        }
+
+        const where = { AND: andConditions };
+
+        console.log(
+            "Listing applications with where:",
+            JSON.stringify(where, null, 2),
+        );
 
         const [items, total] = await Promise.all([
             db.letterInstance.findMany({
