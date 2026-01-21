@@ -353,7 +353,48 @@ async function main() {
     });
     console.log("Letter Template (v1) created.");
 
-    // 7. Seed Permissions
+    // 7. Seed Letter Config (Konfigurasi Dinamis)
+    await prisma.letterConfig.upsert({
+        where: { key: "WAKIL_DEKAN_1" },
+        update: {},
+        create: {
+            key: "WAKIL_DEKAN_1",
+            value: {
+                name: "Prof. Dr. Ngadiwiyana, S.Si., M.Si.",
+                nip: "196906201999031002",
+                jabatan: "Wakil Dekan Akademik dan Kemahasiswaan",
+            },
+            version: 1,
+            isActive: true,
+        },
+    });
+
+    await prisma.letterConfig.upsert({
+        where: { key: "KOP_SURAT_FSM" },
+        update: {},
+        create: {
+            key: "KOP_SURAT_FSM",
+            value: {
+                kementerian:
+                    "KEMENTERIAN PENDIDIKAN TINGGI, SAINS, DAN TEKNOLOGI",
+                universitas: "UNIVERSITAS DIPONEGORO",
+                fakultas: "FAKULTAS SAINS DAN MATEMATIKA",
+                alamat: "Jalan Prof. Jacub Rais",
+                kampus: "Kampus Universitas Diponegoro",
+                kota: "Tembalang, Semarang",
+                kodePos: "50275",
+                telp: "(024) 7474754",
+                fax: "(024) 76480690",
+                website: "www.fsm.undip.ac.id",
+                email: "fsm(at)undip.ac.id",
+            },
+            version: 1,
+            isActive: true,
+        },
+    });
+    console.log("Letter Config seeded.");
+
+    // 8. Seed Permissions
     const { seedPermissions } = await import("./seed-permissions.ts");
     await seedPermissions();
 
