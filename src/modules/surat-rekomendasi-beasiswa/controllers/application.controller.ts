@@ -1,6 +1,7 @@
 import { ApplicationService } from "../services/application.service.ts";
 import { MinioService } from "../../../shared/services/minio.service.ts";
 import { Prisma } from "../../../db/index.ts";
+import { getQRCodeImageUrl, getQRCodeUrl } from "../../../services/verification.service.ts";
 
 const db = Prisma;
 
@@ -342,6 +343,12 @@ export class ApplicationController {
                             return { ...att, downloadUrl };
                         }),
                     ),
+                    verification: application.verification ? {
+                        code: application.verification.code,
+                        verifiedCount: application.verification.verifiedCount,
+                        qrCodeUrl: getQRCodeImageUrl(application.verification.code, process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"),
+                        verifyLink: getQRCodeUrl(application.verification.code, process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000")
+                    } : null
                 },
             };
         } catch (error) {

@@ -224,6 +224,7 @@ export class ApplicationService {
                         actor: true,
                     },
                 },
+                verification: true,
             },
         });
     }
