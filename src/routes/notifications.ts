@@ -12,7 +12,6 @@ import {
  * API untuk mengelola notifikasi pengguna
  */
 const notificationRoutes = new Elysia({
-    prefix: "/notifications",
     tags: ["notifications"],
 })
     .derive(async ({ headers }) => {
