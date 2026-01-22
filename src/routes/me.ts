@@ -1,5 +1,5 @@
 import { authGuardPlugin } from "@backend/middlewares/auth.ts";
-import { Elysia } from "elysia";
+import { Elysia, t } from "elysia";
 import { Prisma } from "../db/index.ts";
 
 const db = Prisma;
@@ -22,6 +22,17 @@ export default new Elysia()
                         include: {
                             departemen: true,
                             programStudi: true,
+                        },
+                    },
+                    pegawai: {
+                        include: {
+                            departemen: true,
+                            programStudi: true,
+                        },
+                    },
+                    userRole: {
+                        include: {
+                            role: true,
                         },
                     },
                 },
@@ -52,44 +63,53 @@ export default new Elysia()
                 return { error: "Unauthorized" };
             }
 
-            // Update user name
-            const updatedUser = await db.user.update({
-                where: { id: user.id },
-                data: {
-                    name: body.name,
-                },
-            });
-
-            // Update phone number based on role (mahasiswa or pegawai)
-            if (body.noHp) {
-                const mahasiswa = await db.mahasiswa.findUnique({
-                    where: { userId: user.id },
+            try {
+                // Update user name
+                const updatedUser = await db.user.update({
+                    where: { id: user.id },
+                    data: {
+                        name: body.name,
+                    },
                 });
 
-                if (mahasiswa) {
-                    await db.mahasiswa.update({
-                        where: { userId: user.id },
-                        data: { noHp: body.noHp },
-                    });
-                } else {
-                    const pegawai = await db.pegawai.findUnique({
+                // Update phone number based on role (mahasiswa or pegawai)
+                if (body.noHp) {
+                    const mahasiswa = await db.mahasiswa.findUnique({
                         where: { userId: user.id },
                     });
-                    if (pegawai) {
-                        await db.pegawai.update({
+
+                    if (mahasiswa) {
+                        await db.mahasiswa.update({
                             where: { userId: user.id },
                             data: { noHp: body.noHp },
                         });
+                    } else {
+                        const pegawai = await db.pegawai.findUnique({
+                            where: { userId: user.id },
+                        });
+                        if (pegawai) {
+                            await db.pegawai.update({
+                                where: { userId: user.id },
+                                data: { noHp: body.noHp },
+                            });
+                        }
                     }
                 }
-            }
 
-            return { success: true, data: updatedUser };
+                return { success: true, data: updatedUser };
+            } catch (error) {
+                console.error("Update profile error:", error);
+                set.status = 500;
+                return {
+                    error: "Internal Server Error",
+                    message: (error as Error).message,
+                };
+            }
         },
         {
-            body: {
-                name: { type: "string" },
-                noHp: { type: "string", optional: true },
-            } as any,
+            body: t.Object({
+                name: t.String({ minLength: 1 }),
+                noHp: t.Optional(t.String()),
+            }),
         },
     );
