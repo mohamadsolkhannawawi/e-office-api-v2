@@ -187,6 +187,7 @@ export class ApplicationService {
                             },
                         },
                     },
+                    letterType: true,
                 },
             }),
             db.letterInstance.count({ where }),
@@ -225,6 +226,7 @@ export class ApplicationService {
                     },
                 },
                 verification: true,
+                letterType: true,
             },
         });
     }
@@ -354,7 +356,7 @@ export class ApplicationService {
         }
 
         trendData.forEach((item) => {
-            const dateStr = item.createdAt.toISOString().split("T")[0] || "";
+            const dateStr = item.createdAt?.toISOString().split("T")[0] || "";
             if (dateStr && trendMap.has(dateStr)) {
                 trendMap.set(dateStr, (trendMap.get(dateStr) || 0) + 1);
             }
