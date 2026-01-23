@@ -2,19 +2,52 @@ import { Elysia, t } from "elysia";
 import { ApplicationController } from "./controllers/application.controller.ts";
 import { AttachmentController } from "./controllers/attachment.controller.ts";
 import { auth } from "@backend/lib/auth.ts";
+import { Prisma } from "@backend/db/index.ts";
 
 const suratRekomendasiRoutes = new Elysia({
     prefix: "/surat-rekomendasi",
     tags: ["surat-rekomendasi"],
 })
     .derive(async ({ headers }) => {
-        const session = await auth.api.getSession({
-            headers,
-        });
-        return {
-            user: session?.user,
-            session,
-        };
+        try {
+            const session = await auth.api.getSession({
+                headers,
+            });
+
+            if (!session || !session.user) {
+                return {
+                    user: null,
+                    session: null,
+                };
+            }
+
+            // Fetch user roles and roleId
+            const userRoles = await Prisma.userRole.findMany({
+                where: { userId: session.user.id },
+                include: { role: true },
+            });
+
+            const roles = userRoles.map((ur) => ur.role.name);
+            const roleId = userRoles[0]?.roleId; // Get first roleId if exists
+
+            // Enrich user object with roles and roleId
+            const enrichedUser = {
+                ...session.user,
+                roles,
+                roleId,
+            };
+
+            return {
+                user: enrichedUser,
+                session,
+            };
+        } catch (error) {
+            console.error("Derive error:", error);
+            return {
+                user: null,
+                session: null,
+            };
+        }
     })
     /**
      * Applications Management
@@ -63,7 +96,7 @@ const suratRekomendasiRoutes = new Elysia({
                 values: t.Optional(t.Any()),
                 status: t.Optional(t.String()),
             }),
-        },
+        }
     )
     .get("/applications", ApplicationController.listApplications, {
         query: t.Optional(
@@ -75,7 +108,7 @@ const suratRekomendasiRoutes = new Elysia({
                 mode: t.Optional(t.String()),
                 search: t.Optional(t.String()),
                 jenisBeasiswa: t.Optional(t.String()),
-            }),
+            })
         ),
     })
     .get(
@@ -85,7 +118,7 @@ const suratRekomendasiRoutes = new Elysia({
             params: t.Object({
                 applicationId: t.String(),
             }),
-        },
+        }
     )
     .post(
         "/applications/:applicationId/verify",
@@ -101,7 +134,7 @@ const suratRekomendasiRoutes = new Elysia({
                 signatureUrl: t.Optional(t.String()), // For WD1 approval
                 letterNumber: t.Optional(t.String()), // For UPA publishing
             }),
-        },
+        }
     )
     .get("/stats", ApplicationController.getStats)
 
@@ -124,7 +157,7 @@ const suratRekomendasiRoutes = new Elysia({
             params: t.Object({
                 letterInstanceId: t.String(),
             }),
-        },
+        }
     )
     .delete(
         "/attachments/:attachmentId",
@@ -133,7 +166,7 @@ const suratRekomendasiRoutes = new Elysia({
             params: t.Object({
                 attachmentId: t.String(),
             }),
-        },
+        }
     );
 
 export default suratRekomendasiRoutes;
