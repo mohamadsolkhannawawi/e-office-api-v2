@@ -82,6 +82,7 @@ model Role {
   users       UserRole[]
   permissions RolePermission[]
   LetterInstance LetterInstance[]
+  LetterHistory LetterHistory[]
 
   @@map("role")
 }
@@ -355,6 +356,8 @@ model LetterHistory {
   actorId String
   actor   User @relation(fields: [actorId], references: [id])
   status  String?
+  roleId  String?     // Track which role processed this letter
+  role    Role? @relation(fields: [roleId], references: [id])
 
   createdAt DateTime @default(now())
 
