@@ -34,9 +34,18 @@ psql --version
 
 **Versi yang diperlukan: PostgreSQL 14 atau lebih tinggi**
 
-### 3. MinIO (Object Storage)
+### 3. Docker & Docker Compose
 
-Diperlukan untuk penyimpanan file attachment (Surat, Lampiran). Dapat dijalankan menggunakan Docker.
+Sangat direkomendasikan untuk menjalankan layanan pendukung (PostgreSQL, MinIO) agar environment tetap konsisten.
+
+```bash
+docker --version
+docker-compose --version # Atau 'docker compose version'
+```
+
+**Versi yang diperlukan: Docker Desktop atau Docker Engine + Docker Compose v2**
+
+Download dari: https://www.docker.com/products/docker-desktop/
 
 ## 📥 Instalasi
 
@@ -100,6 +109,17 @@ Pastikan bucket yang didefinisikan di `MINIO_BUCKET_NAME` sudah dibuat di consol
 
 ## 🚀 Menjalankan Aplikasi
 
+### Menyiapkan Layanan Pendukung (Docker)
+
+Aplikasi ini memerlukan PostgreSQL dan MinIO. Jalankan perintah berikut untuk menjalankan keduanya menggunakan Docker:
+
+```bash
+# Menjalankan database dan minio di background
+docker compose -f docker-compose.dev.yml up -d
+```
+
+Setelah container berjalan, pastikan Anda melakukan [Database Migration](#2-database-migration).
+
 ### Mode Development
 
 Untuk menjalankan aplikasi dengan hot-reloading:
@@ -127,20 +147,27 @@ bun run lint
 ```
 e-office-api-v2/
 ├── src/
-│   ├── modules/                # Domain Modules (e.g. Surat Rekomendasi)
+│   ├── db/                     # Prisma Client & Connection
+│   ├── middlewares/            # Auth, Permission, & Validation Middlewares
+│   ├── modules/                # Specialized Domain Modules
 │   │   └── surat-rekomendasi-beasiswa/
-│   │       ├── controllers/    # Business Logic Entry Points
-│   │       ├── services/       # Core Business Logic
-│   │       └── routes.ts       # Module Routes
-│   ├── shared/
-│   │   └── services/           # Shared components (MinioService, etc.)
-│   ├── routes/                 # Master Routes (Generic)
-│   ├── middlewares/            # Auth & Validation Middlewares
-│   ├── db/                     # Prisma Client Instance
-│   ├── index.ts                # Application Entry Point
-│   └── server.ts               # Server Setup
+│   │       ├── controllers/
+│   │       ├── services/
+│   │       └── routes.ts
+│   ├── routes/                 # API Routes (Master & Public)
+│   │   ├── master/             # Domain Resource Routes
+│   │   └── public/             # Authentication & Public endpoints
+│   ├── services/               # Core Services & CRUD Models
+│   │   └── database_models/    # Basic CRUD for Prisma models
+│   ├── shared/                 # Shared Utilities & Services
+│   │   └── services/           # e.g., MinioService
+│   ├── index.ts                # App Entry Point
+│   └── server.ts               # Elysia Server Config
 ├── prisma/
-│   └── schema.prisma           # Database Schema Definition
+│   ├── schema.prisma           # Database Schema
+│   └── migrations/             # SQL Migrations
+├── docker-compose.yml          # Production Setup
+├── docker-compose.dev.yml      # Development Setup (DB & MinIO)
 └── package.json
 ```
 
@@ -174,7 +201,11 @@ bunx prisma generate
 
 ### Error: "Connection refused (MinIO)"
 
-Pastikan container MinIO berjalan dan port-nya sesuai dengan konfigurasi `.env`.
+Pastikan container MinIO berjalan (`docker ps`) dan port-nya sesuai dengan konfigurasi `.env`.
+
+### Error: "Docker command not found"
+
+Pastikan Docker Desktop sudah terinstal dan sedang berjalan. Jika Anda menggunakan WSL2 di Windows, pastikan integrasi WSL sudah diaktifkan di pengaturan Docker Desktop.
 
 ### Port Conflict
 
