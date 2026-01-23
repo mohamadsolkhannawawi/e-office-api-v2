@@ -13,7 +13,7 @@ import { Prisma } from "@backend/db/index.ts";
  */
 export function generateVerificationCode(
     applicationId: string,
-    letterNumber: string,
+    letterNumber: string
 ): string {
     const timestamp = Date.now().toString();
     const data = `${applicationId}|${letterNumber}|${timestamp}`;
@@ -59,7 +59,6 @@ export async function verifyLetter(code: string) {
             application: {
                 include: {
                     letterType: true,
-                    letterInstance: true,
                 },
             },
         },
@@ -100,5 +99,7 @@ export function getQRCodeUrl(code: string, baseUrl?: string): string {
 export function getQRCodeImageUrl(code: string, baseUrl?: string): string {
     const verifyUrl = getQRCodeUrl(code, baseUrl);
     // Menggunakan QR Server untuk generate QR code image
-    return `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(verifyUrl)}`;
+    return `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(
+        verifyUrl
+    )}`;
 }
