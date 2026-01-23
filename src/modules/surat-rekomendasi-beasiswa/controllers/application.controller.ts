@@ -118,8 +118,9 @@ export class ApplicationController {
             const { namaBeasiswa, values, status } = body;
 
             // Optional: Check ownership
-            const existing =
-                await ApplicationService.getApplicationById(applicationId);
+            const existing = await ApplicationService.getApplicationById(
+                applicationId
+            );
             if (!existing) {
                 set.status = 404;
                 return { error: "Application not found" };
@@ -135,7 +136,7 @@ export class ApplicationController {
                     namaBeasiswa,
                     values,
                     status,
-                },
+                }
             );
 
             return { success: true, data: updated };
@@ -210,7 +211,7 @@ export class ApplicationController {
                 ? user.roles
                 : [user?.role].filter(Boolean);
             const isMahasiswa = userRoles.some(
-                (r: string) => r.toUpperCase() === "MAHASISWA",
+                (r: string) => r.toUpperCase() === "MAHASISWA"
             );
 
             console.log("Role detection:", {
@@ -232,16 +233,21 @@ export class ApplicationController {
                 // Mode: "pending" - Show applications currently at this step waiting for action
                 // Mode: "processed" - Show applications that have been processed by this role (based on history)
                 if (mode === "pending" && currentStep) {
-                    // Applications currently at this step
+                    // Applications currently at this step that haven't been processed by this role
                     filters.currentStep = Number(currentStep);
+                    filters.currentRoleId = user.roleId;
+                    filters.roleFilterMode = "pending";
                     // Exclude COMPLETED and REJECTED for pending list
                     filters.excludeStatus = ["DRAFT", "COMPLETED", "REJECTED"];
                 } else if (mode === "processed" && currentStep) {
-                    // Applications that have passed this step (currentStep > the role's step)
-                    // OR applications that are COMPLETED/REJECTED (for all roles that processed them)
+                    // Applications that have been processed by this role
+                    filters.currentRoleId = user.roleId;
+                    filters.roleFilterMode = "processed";
                     filters.processedByStep = Number(currentStep);
                 } else if (mode === "inbox" && user.roleId) {
+                    // Show all letters for this role (both pending and processed)
                     filters.currentRoleId = user.roleId;
+                    filters.roleFilterMode = "all"; // Show all for this role
                 }
             }
 
@@ -299,8 +305,9 @@ export class ApplicationController {
     }) {
         try {
             const { applicationId } = params;
-            const application =
-                await ApplicationService.getApplicationById(applicationId);
+            const application = await ApplicationService.getApplicationById(
+                applicationId
+            );
 
             if (!application) {
                 set.status = 404;
@@ -339,16 +346,16 @@ export class ApplicationController {
                                     await MinioService.getPresignedUrl(
                                         "",
                                         att.domain,
-                                        3600,
+                                        3600
                                     );
                             } catch (err) {
                                 console.error(
                                     "Failed to generate presigned URL:",
-                                    err,
+                                    err
                                 );
                             }
                             return { ...att, downloadUrl };
-                        }),
+                        })
                     ),
                     verification: application.verification
                         ? {
@@ -358,12 +365,12 @@ export class ApplicationController {
                               qrCodeUrl: getQRCodeImageUrl(
                                   application.verification.code,
                                   process.env.NEXT_PUBLIC_APP_URL ||
-                                      "http://localhost:3000",
+                                      "http://localhost:3000"
                               ),
                               verifyLink: getQRCodeUrl(
                                   application.verification.code,
                                   process.env.NEXT_PUBLIC_APP_URL ||
-                                      "http://localhost:3000",
+                                      "http://localhost:3000"
                               ),
                           }
                         : null,
@@ -401,8 +408,9 @@ export class ApplicationController {
                 4: "UPA",
             };
 
-            const currentApp =
-                await ApplicationService.getApplicationById(applicationId);
+            const currentApp = await ApplicationService.getApplicationById(
+                applicationId
+            );
             if (!currentApp) {
                 set.status = 404;
                 return { error: "Application not found" };
@@ -539,7 +547,8 @@ export class ApplicationController {
                     actorId: user.id,
                     action: action,
                     note: notes,
-                },
+                    roleId: user.roleId || null, // Pass user's roleId to track which role processed it
+                }
             );
 
             return { success: true, data: updated };
@@ -566,7 +575,7 @@ export class ApplicationController {
                 ? user.roles
                 : [user?.role].filter(Boolean);
             const isMahasiswa = userRoles.some(
-                (r: string) => r.toUpperCase() === "MAHASISWA",
+                (r: string) => r.toUpperCase() === "MAHASISWA"
             );
 
             if (isMahasiswa) {
@@ -580,7 +589,7 @@ export class ApplicationController {
 
             const stats = await ApplicationService.getStats(
                 "srb-type-id",
-                filters,
+                filters
             );
             return { success: true, data: stats };
         } catch (error) {
