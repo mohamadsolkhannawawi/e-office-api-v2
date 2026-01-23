@@ -3,6 +3,45 @@ import { MinioService } from "../../../shared/services/minio.service.ts";
 
 const db = Prisma;
 
+/**
+ * Helper: Check if a letter has been processed by a specific role
+ * Returns true if role has any action (approve/reject/revision) on this letter
+ */
+async function hasLetterBeenProcessedByRole(
+    letterInstanceId: string,
+    roleId: string | null
+): Promise<boolean> {
+    if (!roleId) return false;
+
+    const history = await db.letterHistory.findFirst({
+        where: {
+            letterInstanceId,
+            roleId,
+        },
+    });
+    return !!history;
+}
+
+/**
+ * Helper: Get the latest status for a letter from a specific role
+ * Useful to determine if it was rejected/revised by that role
+ */
+async function getLatestRoleActionStatus(
+    letterInstanceId: string,
+    roleId: string | null
+): Promise<string | null> {
+    if (!roleId) return null;
+
+    const history = await db.letterHistory.findFirst({
+        where: {
+            letterInstanceId,
+            roleId,
+        },
+        orderBy: { createdAt: "desc" },
+    });
+    return history?.status || null;
+}
+
 export class ApplicationService {
     static async createApplication(data: {
         namaBeasiswa: string;
@@ -30,7 +69,7 @@ export class ApplicationService {
             namaBeasiswa?: string;
             values?: any;
             status?: string;
-        },
+        }
     ) {
         return await db.letterInstance.update({
             where: { id },
@@ -59,6 +98,7 @@ export class ApplicationService {
         endDate?: string;
         sortOrder?: "asc" | "desc";
         processedByStep?: number; // For "selesai" pages - show apps processed by this step
+        roleFilterMode?: "processed" | "pending" | "all"; // New filter mode
     }) {
         const { page = 1, limit = 20, search, sortOrder = "desc" } = filters;
         const skip = (page - 1) * limit;
@@ -85,7 +125,9 @@ export class ApplicationService {
             andConditions.push({ createdById: filters.createdById });
         }
 
-        if (filters.currentRoleId) {
+        // For role-based inbox view, don't filter by currentRoleId directly
+        // We'll filter by history processed by this role
+        if (filters.currentRoleId && filters.roleFilterMode !== "processed") {
             andConditions.push({ currentRoleId: filters.currentRoleId });
         }
 
@@ -164,37 +206,81 @@ export class ApplicationService {
 
         console.log(
             "Listing applications with where:",
-            JSON.stringify(where, null, 2),
+            JSON.stringify(where, null, 2)
         );
 
-        const [items, total] = await Promise.all([
-            db.letterInstance.findMany({
-                where,
-                orderBy: { createdAt: sortOrder },
-                skip,
-                take: limit,
-                include: {
-                    attachments: {
-                        where: { deletedAt: null },
-                    },
-                    createdBy: {
-                        include: {
-                            mahasiswa: {
-                                include: {
-                                    departemen: true,
-                                    programStudi: true,
-                                },
+        // Get all matching applications (we'll filter by role history in JS)
+        const allItems = await db.letterInstance.findMany({
+            where,
+            orderBy: { createdAt: sortOrder },
+            include: {
+                attachments: {
+                    where: { deletedAt: null },
+                },
+                createdBy: {
+                    include: {
+                        mahasiswa: {
+                            include: {
+                                departemen: true,
+                                programStudi: true,
                             },
                         },
                     },
-                    letterType: true,
                 },
-            }),
-            db.letterInstance.count({ where }),
-        ]);
+                letterType: true,
+                history: {
+                    include: {
+                        role: true,
+                    },
+                    orderBy: { createdAt: "asc" },
+                },
+            },
+        });
+
+        // Filter by role history if needed
+        let filteredItems = allItems;
+        if (filters.currentRoleId && filters.roleFilterMode === "processed") {
+            // For role inbox: only show letters that have been processed by this role
+            filteredItems = allItems.filter((letter) => {
+                // Check if this role has any history entry for this letter
+                const roleHistory = letter.history?.find(
+                    (h) => h.roleId === filters.currentRoleId
+                );
+
+                // Only show if:
+                // 1. Role has processed it (has history entry)
+                // 2. AND letter is not currently rejected or in final revision state
+                if (!roleHistory) return false;
+
+                // Don't show if status is REJECTED and role is not the one who rejected it
+                if (letter.status === "REJECTED") {
+                    return roleHistory.action === "reject";
+                }
+
+                return true;
+            });
+        } else if (
+            filters.currentRoleId &&
+            filters.roleFilterMode === "pending"
+        ) {
+            // For role "pending" inbox: show letters currently at their step that haven't been processed yet
+            filteredItems = allItems.filter((letter) => {
+                // Check if this role has processed this letter already
+                const roleHistory = letter.history?.find(
+                    (h) => h.roleId === filters.currentRoleId
+                );
+
+                // Only show if role hasn't processed it yet AND it's currently at their step
+                return !roleHistory;
+            });
+        }
+
+        // Apply pagination on filtered results
+        const paginatedItems = filteredItems.slice(skip, skip + limit);
+        const total = filteredItems.length;
 
         return {
-            items,
+            items: paginatedItems,
             total,
             page,
             limit,
@@ -245,7 +331,8 @@ export class ApplicationService {
             actorId: string;
             action: string;
             note?: string;
-        },
+            roleId?: string | null; // Add roleId to history
+        }
     ) {
         return await db.$transaction(async (tx) => {
             // 1. Update Instance
@@ -269,7 +356,7 @@ export class ApplicationService {
                 },
             });
 
-            // 2. Create History Log
+            // 2. Create History Log with Role
             await tx.letterHistory.create({
                 data: {
                     letterInstanceId: id,
@@ -277,6 +364,7 @@ export class ApplicationService {
                     action: history.action,
                     note: history.note,
                     status: data.status,
+                    ...(history.roleId ? { roleId: history.roleId } : {}),
                 },
             });
 
