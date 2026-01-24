@@ -585,6 +585,15 @@ export class ApplicationController {
 
             if (isMahasiswa) {
                 filters.createdById = user.id;
+            } else if (user.roleId) {
+                // Detect reviewer role and step
+                const roleName = userRoles[0];
+                const roleStep = ROLE_STEP_MAP[roleName];
+
+                if (roleStep) {
+                    filters.currentRoleId = user.roleId;
+                    filters.currentStep = roleStep;
+                }
             }
 
             // Allow manual filtering by student ID if provided in query (optional)
