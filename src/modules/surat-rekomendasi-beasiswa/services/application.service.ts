@@ -50,16 +50,32 @@ export class ApplicationService {
         letterTypeId: string;
         status?: string;
     }) {
-        return await db.letterInstance.create({
-            data: {
-                scholarshipName: data.namaBeasiswa,
-                values: data.values || {},
-                status: (data.status as any) || "PENDING",
-                currentStep: 1,
-                letterTypeId: data.letterTypeId,
-                createdById: data.userId,
-                schema: {},
-            },
+        // Create letter instance and initial history entry in a transaction
+        return await db.$transaction(async (tx) => {
+            const created = await tx.letterInstance.create({
+                data: {
+                    scholarshipName: data.namaBeasiswa,
+                    values: data.values || {},
+                    status: (data.status as any) || "PENDING",
+                    currentStep: 1,
+                    letterTypeId: data.letterTypeId,
+                    createdById: data.userId,
+                    schema: {},
+                },
+            });
+
+            // Record initial submission in letterHistory so inbox filtering works
+            await tx.letterHistory.create({
+                data: {
+                    letterInstanceId: created.id,
+                    actorId: data.userId,
+                    action: "submit",
+                    note: "Initial submission",
+                    status: created.status,
+                },
+            });
+
+            return created;
         });
     }
 
