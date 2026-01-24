@@ -9,7 +9,7 @@ const db = Prisma;
  */
 async function hasLetterBeenProcessedByRole(
     letterInstanceId: string,
-    roleId: string | null
+    roleId: string | null,
 ): Promise<boolean> {
     if (!roleId) return false;
 
@@ -28,7 +28,7 @@ async function hasLetterBeenProcessedByRole(
  */
 async function getLatestRoleActionStatus(
     letterInstanceId: string,
-    roleId: string | null
+    roleId: string | null,
 ): Promise<string | null> {
     if (!roleId) return null;
 
@@ -85,7 +85,7 @@ export class ApplicationService {
             namaBeasiswa?: string;
             values?: any;
             status?: string;
-        }
+        },
     ) {
         return await db.letterInstance.update({
             where: { id },
@@ -114,7 +114,7 @@ export class ApplicationService {
         endDate?: string;
         sortOrder?: "asc" | "desc";
         processedByStep?: number; // For "selesai" pages - show apps processed by this step
-        roleFilterMode?: "processed" | "pending" | "all"; // New filter mode
+        roleFilterMode?: "processed" | "pending" | "relevant" | "all"; // New filter mode
     }) {
         const { page = 1, limit = 20, search, sortOrder = "desc" } = filters;
         const skip = (page - 1) * limit;
@@ -133,29 +133,102 @@ export class ApplicationService {
             andConditions.push({ status: { notIn: filters.excludeStatus } });
         }
 
-        if (filters.currentStep !== undefined) {
-            andConditions.push({ currentStep: filters.currentStep });
-        }
-
         if (filters.createdById) {
             andConditions.push({ createdById: filters.createdById });
         }
 
-        // For role-based inbox view, don't filter by currentRoleId directly
-        // We'll filter by history processed by this role
-        if (filters.currentRoleId && filters.roleFilterMode !== "processed") {
-            andConditions.push({ currentRoleId: filters.currentRoleId });
+        // ROLE-BASED FILTERING LOGIC
+        if (filters.currentRoleId) {
+            if (filters.roleFilterMode === "pending") {
+                // Pending Mode: Show items currently at this step waiting for action
+                // AND ensure this role hasn't processed it yet (optional safeguard)
+                if (filters.currentStep !== undefined) {
+                    andConditions.push({
+                        AND: [
+                            { currentStep: filters.currentStep },
+                            {
+                                history: {
+                                    none: {
+                                        roleId: filters.currentRoleId,
+                                        action: { in: ["approve", "reject"] }, // Exclude if already decided
+                                    },
+                                },
+                            },
+                        ],
+                    });
+                }
+            } else if (filters.roleFilterMode === "processed") {
+                // Processed Mode: Show items where this role has an entry in history
+                // UNLESS it's rejected by someone else later (optional refinement)
+                // We use 'some' to check if ANY history entry matches this role
+                andConditions.push({
+                    history: {
+                        some: {
+                            roleId: filters.currentRoleId,
+                        },
+                    },
+                });
+
+                // Optional: For "Selesai" page, typically we want items that have moved PAST this step
+                // or are completed/rejected.
+                if (filters.processedByStep !== undefined) {
+                    andConditions.push({
+                        OR: [
+                            { currentStep: { gt: filters.processedByStep } }, // Moved to next step
+                            { status: { in: ["COMPLETED", "REJECTED"] } }, // Final states
+                        ],
+                    });
+                }
+            } else if (filters.roleFilterMode === "relevant") {
+                // Relevant Mode: Show items Pending (at my step) OR Processed (by me)
+                // Requires filters.currentStep (my step) to be set
+                const conditions: any[] = [];
+
+                // 1. Pending at my step
+                if (filters.currentStep !== undefined) {
+                    conditions.push({
+                        AND: [
+                            { currentStep: filters.currentStep },
+                            {
+                                history: {
+                                    none: {
+                                        roleId: filters.currentRoleId,
+                                    },
+                                },
+                            },
+                        ],
+                    });
+                }
+
+                // 2. Processed by me
+                conditions.push({
+                    history: {
+                        some: {
+                            roleId: filters.currentRoleId,
+                        },
+                    },
+                });
+
+                andConditions.push({ OR: conditions });
+            } else if (filters.roleFilterMode === "all") {
+                // All Mode: Show generic list OR if strictly for inbox, maybe just all history?
+                // Currently 'all' might just be generic list without specific constraints
+                // unless we want to limit to "ever touched by this role"
+                // For now, let's leave it open or add specific logic if needed.
+            }
+        } else {
+            // Fallback for non-role specific queries (like Student view or Admin view)
+            if (filters.currentStep !== undefined) {
+                andConditions.push({ currentStep: filters.currentStep });
+            }
         }
 
-        // Filter for "selesai" pages - applications that have been processed by this step
-        // Either currentStep > processedByStep (moved forward) OR status is terminal (COMPLETED/REJECTED)
-        if (filters.processedByStep !== undefined) {
-            andConditions.push({
-                OR: [
-                    { currentStep: { gt: filters.processedByStep } },
-                    { status: { in: ["COMPLETED", "REJECTED"] } },
-                ],
-            });
+        // Fix for "Supervisor Akademik" seeing items meant for TU (Step 1 vs Step 2)
+        // If currentStep is explicitly passed in filters (outside of role logic), enforce it.
+        // But in "pending" mode above, we already enforced it.
+        // This block handles the generic case if roleFilterMode isn't set but currentStep is.
+        if (!filters.currentRoleId && filters.currentStep !== undefined) {
+            andConditions.push({ currentStep: filters.currentStep });
         }
 
         if (filters.jenisBeasiswa && filters.jenisBeasiswa !== "ALL") {
@@ -222,81 +295,44 @@ export class ApplicationService {
 
         console.log(
             "Listing applications with where:",
-            JSON.stringify(where, null, 2)
+            JSON.stringify(where, null, 2),
         );
 
-        // Get all matching applications (we'll filter by role history in JS)
-        const allItems = await db.letterInstance.findMany({
-            where,
-            orderBy: { createdAt: sortOrder },
-            include: {
-                attachments: {
-                    where: { deletedAt: null },
-                },
-                createdBy: {
-                    include: {
-                        mahasiswa: {
-                            include: {
-                                departemen: true,
-                                programStudi: true,
+        // Get all matching applications
+        const [items, total] = await Promise.all([
+            db.letterInstance.findMany({
+                where,
+                orderBy: { createdAt: sortOrder },
+                skip,
+                take: limit,
+                include: {
+                    attachments: {
+                        where: { deletedAt: null },
+                    },
+                    createdBy: {
+                        include: {
+                            mahasiswa: {
+                                include: {
+                                    departemen: true,
+                                    programStudi: true,
+                                },
                             },
                         },
                     },
-                },
-                letterType: true,
-                history: {
-                    include: {
-                        role: true,
+                    letterType: true,
+                    history: {
+                        include: {
+                            role: true,
+                        },
+                        orderBy: { createdAt: "asc" },
                     },
-                    orderBy: { createdAt: "asc" },
                 },
-            },
-        });
-
-        // Filter by role history if needed
-        let filteredItems = allItems;
-        if (filters.currentRoleId && filters.roleFilterMode === "processed") {
-            // For role inbox: only show letters that have been processed by this role
-            filteredItems = allItems.filter((letter) => {
-                // Check if this role has any history entry for this letter
-                const roleHistory = letter.history?.find(
-                    (h) => h.roleId === filters.currentRoleId
-                );
-
-                // Only show if:
-                // 1. Role has processed it (has history entry)
-                // 2. AND letter is not currently rejected or in final revision state
-                if (!roleHistory) return false;
-
-                // Don't show if status is REJECTED and role is not the one who rejected it
-                if (letter.status === "REJECTED") {
-                    return roleHistory.action === "reject";
-                }
-
-                return true;
-            });
-        } else if (
-            filters.currentRoleId &&
-            filters.roleFilterMode === "pending"
-        ) {
-            // For role "pending" inbox: show letters currently at their step that haven't been processed yet
-            filteredItems = allItems.filter((letter) => {
-                // Check if this role has processed this letter already
-                const roleHistory = letter.history?.find(
-                    (h) => h.roleId === filters.currentRoleId
-                );
-
-                // Only show if role hasn't processed it yet AND it's currently at their step
-                return !roleHistory;
-            });
-        }
-
-        // Apply pagination on filtered results
-        const paginatedItems = filteredItems.slice(skip, skip + limit);
-        const total = filteredItems.length;
+            }),
+            db.letterInstance.count({ where }),
+        ]);
 
         return {
-            items: paginatedItems,
+            items,
             total,
             page,
             limit,
@@ -348,7 +384,7 @@ export class ApplicationService {
             action: string;
             note?: string;
             roleId?: string | null; // Add roleId to history
-        }
+        },
     ) {
         return await db.$transaction(async (tx) => {
             // 1. Update Instance
