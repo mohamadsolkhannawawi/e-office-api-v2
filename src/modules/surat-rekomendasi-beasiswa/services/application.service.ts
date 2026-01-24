@@ -424,66 +424,140 @@ export class ApplicationService {
         });
     }
 
-    static async getStats(letterTypeId: string, filters: any = {}) {
+    static async getStats(
+        letterTypeId: string,
+        filters: {
+            createdById?: string;
+            currentRoleId?: string;
+            currentStep?: number;
+        } = {},
+    ) {
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const startOfLast30Days = new Date();
         startOfLast30Days.setDate(now.getDate() - 30);
 
-        // Build base where clause similar to listApplications
+        // 1. Base filter
         const baseWhere: any = { letterTypeId, status: { not: "DRAFT" } };
 
+        // 2. Define "Relevant" items for this user/role
+        let relevantWhere: any = { ...baseWhere };
+
         if (filters.createdById) {
-            baseWhere.createdById = filters.createdById;
+            relevantWhere.createdById = filters.createdById;
+        } else if (filters.currentRoleId && filters.currentStep !== undefined) {
+            // Reviewer Relevant: (At my step AND not processed) OR (Processed by me)
+            relevantWhere.OR = [
+                {
+                    AND: [
+                        { currentStep: filters.currentStep },
+                        {
+                            history: {
+                                none: {
+                                    roleId: filters.currentRoleId,
+                                    action: { in: ["approve", "reject"] },
+                                },
+                            },
+                        },
+                    ],
+                },
+                {
+                    history: {
+                        some: {
+                            roleId: filters.currentRoleId,
+                        },
+                    },
+                },
+            ];
+        }
+
+        // 3. Define specific "Pending" and "Processed/Completed" queries for the role
+        const pendingWhere: any = { ...baseWhere };
+        const processedWhere: any = { ...baseWhere };
+
+        if (filters.createdById) {
+            pendingWhere.createdById = filters.createdById;
+            pendingWhere.status = "PENDING";
+
+            processedWhere.createdById = filters.createdById;
+            processedWhere.status = "COMPLETED";
+        } else if (filters.currentRoleId && filters.currentStep !== undefined) {
+            // Role Pending: Items currently waiting at user's step
+            pendingWhere.currentStep = filters.currentStep;
+            pendingWhere.history = {
+                none: {
+                    roleId: filters.currentRoleId,
+                    action: { in: ["approve", "reject"] },
+                },
+            };
+
+            // Role Processed: Items this user has ever handled
+            processedWhere.history = {
+                some: {
+                    roleId: filters.currentRoleId,
+                },
+            };
         }
 
         const [
-            total,
-            pending,
-            inProgress,
-            completed,
-            rejected,
-            totalCreatedThisMonth,
-            totalCompletedThisMonth,
+            totalCount,
+            pendingCount,
+            completedCount,
+            rejectedCount, // In the context of relevant items
+            totalThisMonth,
+            processedThisMonth,
             trendData,
         ] = await Promise.all([
-            // Overall counts
+            // Overall relevant counts
+            db.letterInstance.count({ where: relevantWhere }),
+            // Pending counts
+            db.letterInstance.count({ where: pendingWhere }),
+            // Total completed (global status COMPLETED) within relevant items
             db.letterInstance.count({
-                where: { ...baseWhere },
+                where: { ...relevantWhere, status: "COMPLETED" },
             }),
+            // Total rejected (global status REJECTED) within relevant items
             db.letterInstance.count({
-                where: { ...baseWhere, status: "PENDING" },
+                where: { ...relevantWhere, status: "REJECTED" },
             }),
-            db.letterInstance.count({
-                where: { ...baseWhere, status: "IN_PROGRESS" },
-            }),
-            db.letterInstance.count({
-                where: { ...baseWhere, status: "COMPLETED" },
-            }),
-            db.letterInstance.count({
-                where: { ...baseWhere, status: "REJECTED" },
-            }),
-            // Monthly stats
+            // Total relevant items created this month
             db.letterInstance.count({
                 where: {
-                    ...baseWhere,
+                    ...relevantWhere,
                     createdAt: { gte: startOfMonth },
                 },
             }),
+            // Items processed by this role this month
             db.letterInstance.count({
                 where: {
-                    ...baseWhere,
-                    status: "COMPLETED",
+                    ...processedWhere,
+                    // Check history for month if possible, but updatedAt is a proxy for now
                     updatedAt: { gte: startOfMonth },
                 },
             }),
-            // Trend data
+            // Trend data for relevant items
             db.letterInstance.findMany({
                 where: {
-                    ...baseWhere,
+                    ...relevantWhere,
                     createdAt: { gte: startOfLast30Days },
                 },
                 select: { createdAt: true },
+            }),
+        ]);
+
+        // Process status distribution within relevant items
+        const distribution = await Promise.all([
+            db.letterInstance.count({
+                where: { ...relevantWhere, status: "PENDING" },
+            }),
+            db.letterInstance.count({
+                where: { ...relevantWhere, status: "IN_PROGRESS" },
+            }),
+            db.letterInstance.count({
+                where: { ...relevantWhere, status: "COMPLETED" },
+            }),
+            db.letterInstance.count({
+                where: { ...relevantWhere, status: "REJECTED" },
             }),
         ]);
 
@@ -507,19 +581,18 @@ export class ApplicationService {
             .reverse();
 
         return {
-            total,
-            pending,
-            inProgress,
-            completed,
-            rejected,
-            totalCreatedThisMonth,
-            totalCompletedThisMonth,
+            total: totalCount,
+            pending: pendingCount,
+            completed: completedCount, // Total completed in my scope
+            rejected: rejectedCount,
+            totalCreatedThisMonth: totalThisMonth,
+            totalCompletedThisMonth: processedThisMonth, // "Selesai Bulan Ini" context for role
             trend,
             distribution: {
-                pending,
-                inProgress,
-                completed,
-                rejected,
+                pending: distribution[0],
+                inProgress: distribution[1],
+                completed: distribution[2],
+                rejected: distribution[3],
             },
         };
     }
