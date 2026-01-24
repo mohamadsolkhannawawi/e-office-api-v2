@@ -1,4 +1,5 @@
 import { ApplicationService } from "../services/application.service.ts";
+import { ROLE_STEP_MAP } from "../constants.ts";
 import { MinioService } from "../../../shared/services/minio.service.ts";
 import { Prisma } from "../../../db/index.ts";
 import {
@@ -118,9 +119,8 @@ export class ApplicationController {
             const { namaBeasiswa, values, status } = body;
 
             // Optional: Check ownership
-            const existing = await ApplicationService.getApplicationById(
-                applicationId
-            );
+            const existing =
+                await ApplicationService.getApplicationById(applicationId);
             if (!existing) {
                 set.status = 404;
                 return { error: "Application not found" };
@@ -136,7 +136,7 @@ export class ApplicationController {
                     namaBeasiswa,
                     values,
                     status,
-                }
+                },
             );
 
             return { success: true, data: updated };
@@ -211,7 +211,7 @@ export class ApplicationController {
                 ? user.roles
                 : [user?.role].filter(Boolean);
             const isMahasiswa = userRoles.some(
-                (r: string) => r.toUpperCase() === "MAHASISWA"
+                (r: string) => r.toUpperCase() === "MAHASISWA",
             );
 
             console.log("Role detection:", {
@@ -244,10 +244,17 @@ export class ApplicationController {
                     filters.currentRoleId = user.roleId;
                     filters.roleFilterMode = "processed";
                     filters.processedByStep = Number(currentStep);
-                } else if (mode === "inbox" && user.roleId) {
-                    // Show all letters for this role (both pending and processed)
-                    filters.currentRoleId = user.roleId;
-                    filters.roleFilterMode = "all"; // Show all for this role
+                } else if (!mode && user.roleId) {
+                    // DEFAULT MODE (e.g. Dashboard "Recent Letters")
+                    // If reviewer has a roleId, show "Relevant" items only
+                    const roleName = userRoles[0]; // Assume primary role
+                    const roleStep = ROLE_STEP_MAP[roleName];
+
+                    if (roleStep) {
+                        filters.currentStep = roleStep;
+                        filters.currentRoleId = user.roleId;
+                        filters.roleFilterMode = "relevant";
+                    }
                 }
             }
 
@@ -305,9 +312,8 @@ export class ApplicationController {
     }) {
         try {
             const { applicationId } = params;
-            const application = await ApplicationService.getApplicationById(
-                applicationId
-            );
+            const application =
+                await ApplicationService.getApplicationById(applicationId);
 
             if (!application) {
                 set.status = 404;
@@ -346,16 +352,16 @@ export class ApplicationController {
                                     await MinioService.getPresignedUrl(
                                         "",
                                         att.domain,
-                                        3600
+                                        3600,
                                     );
                             } catch (err) {
                                 console.error(
                                     "Failed to generate presigned URL:",
-                                    err
+                                    err,
                                 );
                             }
                             return { ...att, downloadUrl };
-                        })
+                        }),
                     ),
                     verification: application.verification
                         ? {
@@ -365,12 +371,12 @@ export class ApplicationController {
                               qrCodeUrl: getQRCodeImageUrl(
                                   application.verification.code,
                                   process.env.NEXT_PUBLIC_APP_URL ||
-                                      "http://localhost:3000"
+                                      "http://localhost:3000",
                               ),
                               verifyLink: getQRCodeUrl(
                                   application.verification.code,
                                   process.env.NEXT_PUBLIC_APP_URL ||
-                                      "http://localhost:3000"
+                                      "http://localhost:3000",
                               ),
                           }
                         : null,
@@ -408,9 +414,8 @@ export class ApplicationController {
                 4: "UPA",
             };
 
-            const currentApp = await ApplicationService.getApplicationById(
-                applicationId
-            );
+            const currentApp =
+                await ApplicationService.getApplicationById(applicationId);
             if (!currentApp) {
                 set.status = 404;
                 return { error: "Application not found" };
@@ -548,7 +553,7 @@ export class ApplicationController {
                     action: action,
                     note: notes,
                     roleId: user.roleId || null, // Pass user's roleId to track which role processed it
-                }
+                },
             );
 
             return { success: true, data: updated };
@@ -575,7 +580,7 @@ export class ApplicationController {
                 ? user.roles
                 : [user?.role].filter(Boolean);
             const isMahasiswa = userRoles.some(
-                (r: string) => r.toUpperCase() === "MAHASISWA"
+                (r: string) => r.toUpperCase() === "MAHASISWA",
             );
 
             if (isMahasiswa) {
@@ -589,7 +594,7 @@ export class ApplicationController {
 
             const stats = await ApplicationService.getStats(
                 "srb-type-id",
-                filters
+                filters,
             );
             return { success: true, data: stats };
         } catch (error) {
