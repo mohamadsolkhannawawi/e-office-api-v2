@@ -140,49 +140,17 @@ export class ApplicationController {
                 status,
             };
 
-            // If resubmitting after revision, determine next step
+            // If resubmitting after revision, always go back to step 1 (Supervisor Akademik)
+            // This ensures vertical approval flow from the beginning
             if (isResubmissionAfterRevision) {
-                // Find the role that requested the revision (latest revision action in history)
-                const revisionHistory = await db.letterHistory.findFirst({
-                    where: {
-                        letterInstanceId: applicationId,
-                        action: "revision",
-                    },
-                    orderBy: { createdAt: "desc" },
-                    include: { role: true },
+                // Always reset to step 1 (Supervisor Akademik) after resubmission
+                const supervisorRole = await db.role.findUnique({
+                    where: { name: "SUPERVISOR" },
                 });
 
-                // Determine step based on who requested revision
-                const STEP_ROLE_MAP: Record<number, string> = {
-                    1: "SUPERVISOR",
-                    2: "MANAJER_TU",
-                    3: "WAKIL_DEKAN_1",
-                    4: "UPA",
-                };
-
-                let nextStep = 1; // Default to Supervisor
-                let nextRoleId = null;
-
-                if (revisionHistory?.role?.name) {
-                    // Find the step of the role that requested revision
-                    const roleStep = Object.entries(STEP_ROLE_MAP).find(
-                        ([, roleName]) =>
-                            roleName === revisionHistory?.role?.name,
-                    )?.[0];
-
-                    if (roleStep) {
-                        nextStep = Number(roleStep);
-                        // Get the role ID for that step
-                        const role = await db.role.findUnique({
-                            where: { name: STEP_ROLE_MAP[nextStep] },
-                        });
-                        if (role) nextRoleId = role.id;
-                    }
-                }
-
                 updateData.status = "PENDING";
-                updateData.currentStep = nextStep;
-                updateData.currentRoleId = nextRoleId;
+                updateData.currentStep = 1;
+                updateData.currentRoleId = supervisorRole?.id || null;
             }
 
             const updated = await ApplicationService.updateApplicationData(
@@ -197,7 +165,7 @@ export class ApplicationController {
                         letterInstanceId: applicationId,
                         actorId: user.id,
                         action: "resubmit",
-                        note: "Revisi selesai, pengajuan disubmit ulang",
+                        note: "Revisi selesai, pengajuan disubmit ulang ke Supervisor Akademik",
                         status: "PENDING",
                         roleId: null, // Mahasiswa doesn't have roleId
                     },
@@ -633,8 +601,6 @@ export class ApplicationController {
         query: any;
     }) {
         try {
-            const filters: any = {};
-
             const userRoles = Array.isArray(user?.roles)
                 ? user.roles
                 : [user?.role].filter(Boolean);
@@ -642,29 +608,48 @@ export class ApplicationController {
                 (r: string) => r.toUpperCase() === "MAHASISWA",
             );
 
+            // For Mahasiswa: use original stats logic (filter by createdById)
             if (isMahasiswa) {
-                filters.createdById = user.id;
-            } else if (user.roleId) {
-                // Detect reviewer role and step
+                const filters: any = { createdById: user.id };
+
+                const stats = await ApplicationService.getStats(
+                    "srb-type-id",
+                    filters,
+                );
+                return { success: true, data: stats };
+            }
+
+            // For Role (SPV, TU, WD1, UPA): use new role-based stats logic
+            if (user.roleId) {
                 const roleName = userRoles[0];
                 const roleStep = ROLE_STEP_MAP[roleName];
 
                 if (roleStep) {
-                    filters.currentRoleId = user.roleId;
-                    filters.currentStep = roleStep;
+                    const stats = await ApplicationService.getStatsForRole(
+                        "srb-type-id",
+                        user.roleId,
+                        roleStep,
+                    );
+                    return { success: true, data: stats };
                 }
             }
 
-            // Allow manual filtering by student ID if provided in query (optional)
-            if (query?.studentId) {
-                filters.createdById = query.studentId;
-            }
-
-            const stats = await ApplicationService.getStats(
-                "srb-type-id",
-                filters,
-            );
-            return { success: true, data: stats };
+            // Fallback: return empty stats
+            return {
+                success: true,
+                data: {
+                    perluTindakan: 0,
+                    selesaiBulanIni: 0,
+                    totalBulanIni: 0,
+                    trend: [],
+                    distribution: {
+                        pending: 0,
+                        inProgress: 0,
+                        completed: 0,
+                        rejected: 0,
+                    },
+                },
+            };
         } catch (error) {
             console.error("Get stats error:", error);
             set.status = 500;
