@@ -130,14 +130,79 @@ export class ApplicationController {
                 return { error: "Forbidden" };
             }
 
+            // Check if this is a resubmission after revision
+            const isResubmissionAfterRevision =
+                existing.status === "REVISION" && status === "PENDING";
+
+            let updateData: any = {
+                namaBeasiswa,
+                values,
+                status,
+            };
+
+            // If resubmitting after revision, determine next step
+            if (isResubmissionAfterRevision) {
+                // Find the role that requested the revision (latest revision action in history)
+                const revisionHistory = await db.letterHistory.findFirst({
+                    where: {
+                        letterInstanceId: applicationId,
+                        action: "revision",
+                    },
+                    orderBy: { createdAt: "desc" },
+                    include: { role: true },
+                });
+
+                // Determine step based on who requested revision
+                const STEP_ROLE_MAP: Record<number, string> = {
+                    1: "SUPERVISOR",
+                    2: "MANAJER_TU",
+                    3: "WAKIL_DEKAN_1",
+                    4: "UPA",
+                };
+
+                let nextStep = 1; // Default to Supervisor
+                let nextRoleId = null;
+
+                if (revisionHistory?.role?.name) {
+                    // Find the step of the role that requested revision
+                    const roleStep = Object.entries(STEP_ROLE_MAP).find(
+                        ([, roleName]) =>
+                            roleName === revisionHistory?.role?.name,
+                    )?.[0];
+
+                    if (roleStep) {
+                        nextStep = Number(roleStep);
+                        // Get the role ID for that step
+                        const role = await db.role.findUnique({
+                            where: { name: STEP_ROLE_MAP[nextStep] },
+                        });
+                        if (role) nextRoleId = role.id;
+                    }
+                }
+
+                updateData.status = "PENDING";
+                updateData.currentStep = nextStep;
+                updateData.currentRoleId = nextRoleId;
+            }
+
             const updated = await ApplicationService.updateApplicationData(
                 applicationId,
-                {
-                    namaBeasiswa,
-                    values,
-                    status,
-                },
+                updateData,
             );
+
+            // If resubmission after revision, create history entry
+            if (isResubmissionAfterRevision) {
+                await db.letterHistory.create({
+                    data: {
+                        letterInstanceId: applicationId,
+                        actorId: user.id,
+                        action: "resubmit",
+                        note: "Revisi selesai, pengajuan disubmit ulang",
+                        status: "PENDING",
+                        roleId: null, // Mahasiswa doesn't have roleId
+                    },
+                });
+            }
 
             return { success: true, data: updated };
         } catch (error) {
@@ -240,21 +305,15 @@ export class ApplicationController {
                     // Exclude COMPLETED and REJECTED for pending list
                     filters.excludeStatus = ["DRAFT", "COMPLETED", "REJECTED"];
                 } else if (mode === "processed" && currentStep) {
-                    // Applications that have been processed by this role
+                    // Applications that have been processed by this role (based on history)
                     filters.currentRoleId = user.roleId;
                     filters.roleFilterMode = "processed";
-                    filters.processedByStep = Number(currentStep);
+                    // Don't use processedByStep - we filter by history instead
                 } else if (!mode && user.roleId) {
-                    // DEFAULT MODE (e.g. Dashboard "Recent Letters")
-                    // If reviewer has a roleId, show "Relevant" items only
-                    const roleName = userRoles[0]; // Assume primary role
-                    const roleStep = ROLE_STEP_MAP[roleName];
-
-                    if (roleStep) {
-                        filters.currentStep = roleStep;
-                        filters.currentRoleId = user.roleId;
-                        filters.roleFilterMode = "relevant";
-                    }
+                    // DEFAULT MODE (e.g. Dashboard "Recent Letters" - Semua Surat)
+                    // Show all letters that have been processed by OR currently at this role
+                    filters.currentRoleId = user.roleId;
+                    filters.roleFilterMode = "all"; // Show both pending and processed
                 }
             }
 
