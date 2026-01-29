@@ -6,7 +6,7 @@
         }
     ],
     "installCommand": "bun install",
-    "buildCommand": "bun run build",
+    "buildCommand": "bun prisma generate && bun run build",
     "framework": "elysia",
     "outputDirectory": "dist"
 }
