@@ -7,6 +7,6 @@
     ],
     "installCommand": "bun install",
     "buildCommand": "bun run build",
-    "framework": "other",
+    "framework": "elysia",
     "outputDirectory": "dist"
 }
