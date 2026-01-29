@@ -51,17 +51,11 @@ export abstract class MinioService {
         jenis_file: string,
         contentType?: string,
     ): Promise<string> {
-        const uploadDir = "./uploads";
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
-
         const nameReplace =
             MinioService.generateUniqueFileNameWithTimestamp(objectName);
 
-        const tempFilePath = path.join(uploadDir, file.name);
+        // Convert File to Buffer
         const fileBuffer = Buffer.from(await file.arrayBuffer());
-        fs.writeFileSync(tempFilePath, fileBuffer);
 
         let folderBucket = jenis_file || "";
         if (jenis_file === "lampiran") {
@@ -72,14 +66,14 @@ export abstract class MinioService {
             folderBucket = "";
         }
 
-        await MinioService.client.fPutObject(
+        // Use putObject (Buffer) instead of fPutObject (File Path)
+        await MinioService.client.putObject(
             MinioService.bucketName,
             folderBucket + nameReplace,
-            tempFilePath,
+            fileBuffer,
+            fileBuffer.length, // Size is required for Buffer uploads in some Minio client versions/configs
             { "Content-Type": contentType || "application/octet-stream" },
         );
-
-        fs.unlinkSync(tempFilePath);
 
         const url = await MinioService.client.presignedUrl(
             "GET",
@@ -97,34 +91,20 @@ export abstract class MinioService {
         contentType?: string,
     ): Promise<{ url: string; nameReplace: string }> {
         try {
-            // Buat upload directory
-            const uploadDir = "./uploads";
-
-            if (!fs.existsSync(uploadDir)) {
-                fs.mkdirSync(uploadDir, { recursive: true });
-            }
-
             const nameReplace =
                 MinioService.generateUniqueFileNameWithTimestamp(file.name);
 
-            // Simpan file ke lokal
-            const tempFilePath = path.join(uploadDir, file.name);
-
+            // Convert File to Buffer
             const fileBuffer = Buffer.from(await file.arrayBuffer());
 
-            fs.writeFileSync(tempFilePath, fileBuffer);
-
-            // Upload ke MinIO
-
-            await MinioService.client.fPutObject(
+            // Upload directly from Buffer
+            await MinioService.client.putObject(
                 MinioService.bucketName,
                 category_file + nameReplace,
-                tempFilePath,
+                fileBuffer,
+                fileBuffer.length,
                 { "Content-Type": contentType || "application/octet-stream" },
             );
-
-            // Hapus file temp
-            fs.unlinkSync(tempFilePath);
 
             // Generate presigned URL
             const url = await MinioService.client.presignedUrl(
