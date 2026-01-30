@@ -18,6 +18,21 @@ const db = Prisma;
 
 export class ApplicationController {
     /**
+     * Helper method to convert database role name to user-friendly format
+     */
+    static formatRoleName(roleName: string): string {
+        const roleMap: Record<string, string> = {
+            SUPERVISOR: "Supervisor Akademik",
+            MANAJER_TU: "Manajer TU",
+            WAKIL_DEKAN_1: "Wakil Dekan 1",
+            WAKIL_DEKAN_2: "Wakil Dekan 2",
+            UPA: "Staff UPA",
+            MAHASISWA: "Mahasiswa",
+        };
+        return roleMap[roleName] || roleName;
+    }
+
+    /**
      * Helper method to get basic application info without full details
      */
     static async getApplicationDetailService(applicationId: string) {
@@ -515,11 +530,35 @@ export class ApplicationController {
                     const mahasiswa = app.createdBy?.mahasiswa;
                     const values = app.values || {};
 
+                    // Find the latest revision entry to get who requested the revision
+                    let lastRevisionFromRole: string | undefined = undefined;
+                    if (
+                        app.status === "REVISION" &&
+                        app.history &&
+                        Array.isArray(app.history)
+                    ) {
+                        const revisionHistory = [...app.history]
+                            .reverse()
+                            .find((h: any) => h.status === "REVISION");
+                        if (
+                            revisionHistory &&
+                            revisionHistory.actor?.userRole?.[0]?.role
+                        ) {
+                            const rawRoleName =
+                                revisionHistory.actor.userRole[0].role.name;
+                            lastRevisionFromRole =
+                                ApplicationController.formatRoleName(
+                                    rawRoleName,
+                                );
+                        }
+                    }
+
                     return {
                         id: app.id,
                         scholarshipName: app.scholarshipName,
                         status: app.status,
                         currentStep: app.currentStep,
+                        lastRevisionFromRole,
                         applicantName: app.createdBy?.name || "",
                         updatedAt: app.updatedAt,
                         formData: {
