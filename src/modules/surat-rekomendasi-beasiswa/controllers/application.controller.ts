@@ -25,7 +25,6 @@ export class ApplicationController {
             SUPERVISOR: "Supervisor Akademik",
             MANAJER_TU: "Manajer TU",
             WAKIL_DEKAN_1: "Wakil Dekan 1",
-            WAKIL_DEKAN_2: "Wakil Dekan 2",
             UPA: "Staff UPA",
             MAHASISWA: "Mahasiswa",
         };

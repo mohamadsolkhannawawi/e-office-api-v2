@@ -306,6 +306,15 @@ export class ApplicationService {
                 history: {
                     include: {
                         role: true,
+                        actor: {
+                            include: {
+                                userRole: {
+                                    include: {
+                                        role: true,
+                                    },
+                                },
+                            },
+                        },
                     },
                     orderBy: { createdAt: "asc" },
                 },
