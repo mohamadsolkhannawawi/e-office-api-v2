@@ -6,6 +6,7 @@ import { Elysia } from "elysia";
 import { autoload } from "elysia-autoload";
 import env from "env-var";
 import suratRekomendasiRoutes from "./modules/surat-rekomendasi-beasiswa/routes.ts";
+import notificationRoutes from "./routes/notifications.ts";
 
 import { PrismaClient } from "@backend/db/index.ts";
 
@@ -79,7 +80,9 @@ export const app = new Elysia()
     // Mount Better Auth handler for authentication endpoints
     .all("/api/auth/*", ({ request }) => auth.handler(request))
     // Mount routes under /api prefix to match Next.js rewrite
-    .group("/api", (api) => api.use(suratRekomendasiRoutes))
+    .group("/api", (api) =>
+        api.use(suratRekomendasiRoutes).use(notificationRoutes),
+    )
     .use(
         await autoload({
             prefix: "/api",
