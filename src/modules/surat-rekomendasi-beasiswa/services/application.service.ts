@@ -686,12 +686,15 @@ export class ApplicationService {
             records: perluTindakanRecords,
         });
 
-        // 2. SELESAI (Bulan Ini): Unique letters that were APPROVED by this role in this month
-        // Count distinct letterInstanceId where this role approved
+        // 2. SELESAI (Bulan Ini): Unique letters that were PROCESSED by this role and are NO LONGER at this role in this month
+        // This matches the "mode=processed" logic from the applications list
+        // Count distinct letterInstanceId where:
+        // - This role has history (approve/reject/revision)
+        // - Letter is no longer at this role (currentRoleId != this roleId OR moved to next step)
+        // - Created/processed in this month
         const selesaiBulanIniRecords = await db.letterHistory.findMany({
             where: {
                 roleId: roleId,
-                action: "approve",
                 createdAt: { gte: startOfMonth },
                 letterInstance: {
                     letterTypeId: letterTypeId,
@@ -703,15 +706,46 @@ export class ApplicationService {
                 action: true,
                 createdAt: true,
                 letterInstanceId: true,
+                letterInstance: {
+                    select: {
+                        id: true,
+                        currentRoleId: true,
+                        currentStep: true,
+                        status: true,
+                    },
+                },
             },
             distinct: ["letterInstanceId"],
         });
 
-        const selesaiBulanIni = selesaiBulanIniRecords.length;
+        // Filter to only include letters that are NO LONGER at this role
+        const selesaiBulanIniFiltered = selesaiBulanIniRecords.filter(
+            (record) => {
+                const letter = record.letterInstance;
+                // Exclude if letter is still at this role
+                const isCurrentlyAtThisRole =
+                    letter.currentRoleId === roleId ||
+                    (letter.currentStep === roleStep &&
+                        ["PENDING", "IN_PROGRESS", "REVISION"].includes(
+                            letter.status as string,
+                        ));
+
+                return !isCurrentlyAtThisRole;
+            },
+        );
+
+        const selesaiBulanIni = selesaiBulanIniFiltered.length;
 
         console.log("✅ Selesai Bulan Ini:", {
             count: selesaiBulanIni,
-            records: selesaiBulanIniRecords,
+            records: selesaiBulanIniFiltered.map((r) => ({
+                id: r.id,
+                letterInstanceId: r.letterInstanceId,
+                action: r.action,
+                currentRoleId: r.letterInstance.currentRoleId,
+                currentStep: r.letterInstance.currentStep,
+                status: r.letterInstance.status,
+            })),
         });
 
         // 3. TOTAL SURAT (Bulan Ini): All unique letters that reached this role this month
