@@ -8,6 +8,9 @@ import env from "env-var";
 import suratRekomendasiRoutes from "./modules/surat-rekomendasi-beasiswa/routes.ts";
 import notificationRoutes from "./routes/notifications.ts";
 import signatureRoutes from "./routes/signatures.ts";
+import stampRoutes from "./routes/stamps.ts";
+import letterNumberRoutes from "./routes/master/letterNumber.ts";
+import letterNumberingRoutes from "./routes/master/letterNumbering.ts";
 
 import { PrismaClient } from "@backend/db/index.ts";
 
@@ -85,7 +88,11 @@ export const app = new Elysia()
         api
             .use(suratRekomendasiRoutes)
             .use(notificationRoutes)
-            .use(signatureRoutes),
+            .use(signatureRoutes)
+            .use(stampRoutes)
+            .group("/master", (master) =>
+                master.use(letterNumberRoutes).use(letterNumberingRoutes),
+            ),
     )
     .use(
         await autoload({
