@@ -96,7 +96,7 @@ const suratRekomendasiRoutes = new Elysia({
                 values: t.Optional(t.Any()),
                 status: t.Optional(t.String()),
             }),
-        }
+        },
     )
     .get("/applications", ApplicationController.listApplications, {
         query: t.Optional(
@@ -108,7 +108,7 @@ const suratRekomendasiRoutes = new Elysia({
                 mode: t.Optional(t.String()),
                 search: t.Optional(t.String()),
                 jenisBeasiswa: t.Optional(t.String()),
-            })
+            }),
         ),
     })
     .get(
@@ -118,7 +118,7 @@ const suratRekomendasiRoutes = new Elysia({
             params: t.Object({
                 applicationId: t.String(),
             }),
-        }
+        },
     )
     .post(
         "/applications/:applicationId/verify",
@@ -134,9 +134,18 @@ const suratRekomendasiRoutes = new Elysia({
                 signatureUrl: t.Optional(t.String()), // For WD1 approval
                 letterNumber: t.Optional(t.String()), // For UPA publishing
             }),
-        }
+        },
     )
     .get("/stats", ApplicationController.getStats)
+    .delete(
+        "/applications/:applicationId",
+        ApplicationController.deleteApplication,
+        {
+            params: t.Object({
+                applicationId: t.String(),
+            }),
+        },
+    )
 
     /**
      * Attachment Handling
@@ -157,7 +166,7 @@ const suratRekomendasiRoutes = new Elysia({
             params: t.Object({
                 letterInstanceId: t.String(),
             }),
-        }
+        },
     )
     .delete(
         "/attachments/:attachmentId",
@@ -166,7 +175,7 @@ const suratRekomendasiRoutes = new Elysia({
             params: t.Object({
                 attachmentId: t.String(),
             }),
-        }
+        },
     );
 
 export default suratRekomendasiRoutes;
