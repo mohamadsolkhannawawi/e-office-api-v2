@@ -311,6 +311,7 @@ model LetterInstance {
 
   history  LetterHistory[]
   versions LetterVersion[]
+  notifications Notification[] // 🔴 TAMBAHAN: Reverse relation
 
   letterTypeId String
   letterType   LetterType @relation(fields: [letterTypeId], references: [id])
@@ -397,15 +398,19 @@ model UserSignature {
 
 // 🔴 TAMBAHAN
 model Notification {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  title     String
-  message   String
-  type      String
-  isRead    Boolean  @default(false)
-  entityId  String?
+  title             String
+  message           String
+  type              String
+  isRead            Boolean  @default(false)
+  entityId          String?
+  
+  // Relation to LetterInstance for direct link to letter detail
+  letterInstanceId  String?
+  letterInstance    LetterInstance? @relation(fields: [letterInstanceId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
 
