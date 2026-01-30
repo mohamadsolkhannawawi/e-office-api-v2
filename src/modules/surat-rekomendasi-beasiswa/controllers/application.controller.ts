@@ -838,8 +838,14 @@ export class ApplicationController {
     }) {
         try {
             const { applicationId } = params;
-            const { action, notes, targetStep, signatureUrl, letterNumber } =
-                body;
+            const {
+                action,
+                notes,
+                targetStep,
+                signatureUrl,
+                letterNumber,
+                stampId,
+            } = body;
 
             // Define Role Mappings
             // Step 1: Supervisor, Step 2: TU, Step 3: WD1, Step 4: UPA
@@ -978,6 +984,9 @@ export class ApplicationController {
                 updateData.publishedAt = new Date();
                 if (letterNumber) {
                     updateData.letterNumber = letterNumber;
+                }
+                if (stampId) {
+                    updateData.stampId = stampId;
                 }
             }
 

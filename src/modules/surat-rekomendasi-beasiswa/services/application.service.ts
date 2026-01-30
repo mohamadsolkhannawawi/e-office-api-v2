@@ -462,6 +462,7 @@ export class ApplicationService {
                 },
                 verification: true,
                 letterType: true,
+                stamp: true, // 🔴 TAMBAHAN: Include stamp untuk mendapatkan stampUrl
             },
         });
     }
@@ -474,6 +475,7 @@ export class ApplicationService {
             currentRoleId?: string | null;
             values?: any;
             letterNumber?: string;
+            stampId?: string;
             publishedAt?: Date;
         },
         history: {
@@ -499,6 +501,7 @@ export class ApplicationService {
                     ...(data.letterNumber
                         ? { letterNumber: data.letterNumber }
                         : {}),
+                    ...(data.stampId ? { stampId: data.stampId } : {}),
                     ...(data.publishedAt
                         ? { publishedAt: data.publishedAt }
                         : {}),
