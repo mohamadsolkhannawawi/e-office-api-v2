@@ -226,6 +226,31 @@ const rolePermissions: RolePermissions[] = [
                 description: "View archived letters",
             },
             {
+                resource: "stamp",
+                action: "manage",
+                description: "Manage stamp templates",
+            },
+            {
+                resource: "stamp",
+                action: "create",
+                description: "Create new stamp template",
+            },
+            {
+                resource: "stamp",
+                action: "read:own",
+                description: "View own stamps",
+            },
+            {
+                resource: "stamp",
+                action: "delete",
+                description: "Delete own stamp templates",
+            },
+            {
+                resource: "stamp",
+                action: "apply",
+                description: "Apply stamp to letters",
+            },
+            {
                 resource: "notification",
                 action: "read:own",
                 description: "Read own notifications",

@@ -370,6 +370,51 @@ async function main() {
     });
 
     await prisma.letterConfig.upsert({
+        where: { key: "SUPERVISOR" },
+        update: {},
+        create: {
+            key: "SUPERVISOR",
+            value: {
+                name: "Dr. Supervisor Name",
+                nip: "198001012005011001",
+                jabatan: "Supervisor",
+            },
+            version: 1,
+            isActive: true,
+        },
+    });
+
+    await prisma.letterConfig.upsert({
+        where: { key: "MANAJER" },
+        update: {},
+        create: {
+            key: "MANAJER",
+            value: {
+                name: "Dr. Manajer Name",
+                nip: "198002012005011002",
+                jabatan: "Manajer",
+            },
+            version: 1,
+            isActive: true,
+        },
+    });
+
+    await prisma.letterConfig.upsert({
+        where: { key: "UPA" },
+        update: {},
+        create: {
+            key: "UPA",
+            value: {
+                name: "Staff UPA",
+                nip: "198003012005011003",
+                jabatan: "Staff Unit Pelayanan Akademik",
+            },
+            version: 1,
+            isActive: true,
+        },
+    });
+
+    await prisma.letterConfig.upsert({
         where: { key: "KOP_SURAT_FSM" },
         update: {},
         create: {
