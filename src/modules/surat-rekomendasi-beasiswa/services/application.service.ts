@@ -134,7 +134,10 @@ export class ApplicationService {
         const { page = 1, limit = 20, search, sortOrder = "desc" } = filters;
         const skip = (page - 1) * limit;
 
-        const andConditions: any[] = [{ letterTypeId: filters.letterTypeId }];
+        const andConditions: any[] = [
+            { letterTypeId: filters.letterTypeId },
+            { deletedAt: null }, // Exclude soft-deleted applications
+        ];
 
         if (filters.status) {
             if (Array.isArray(filters.status)) {
@@ -394,7 +397,7 @@ export class ApplicationService {
 
     static async getApplicationById(id: string) {
         return await db.letterInstance.findUnique({
-            where: { id },
+            where: { id, deletedAt: null }, // Exclude soft-deleted applications
             include: {
                 attachments: {
                     where: { deletedAt: null },
@@ -788,5 +791,33 @@ export class ApplicationService {
                 rejected,
             },
         };
+    }
+
+    static async deleteApplication(id: string, userId: string) {
+        // Verify the application belongs to the user
+        const application = await db.letterInstance.findUnique({
+            where: { id },
+        });
+
+        if (!application) {
+            throw new Error("Application not found");
+        }
+
+        if (application.createdById !== userId) {
+            throw new Error("Unauthorized: Cannot delete this application");
+        }
+
+        // Only allow deletion if status is DRAFT
+        if (application.status !== "DRAFT") {
+            throw new Error("Can only delete applications with DRAFT status");
+        }
+
+        // Soft delete by setting deletedAt timestamp
+        return await db.letterInstance.update({
+            where: { id },
+            data: {
+                deletedAt: new Date(),
+            },
+        });
     }
 }
