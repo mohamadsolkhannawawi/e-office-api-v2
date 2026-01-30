@@ -656,4 +656,57 @@ export class ApplicationController {
             return { error: "Failed to fetch statistics" };
         }
     }
+
+    static async deleteApplication({
+        params,
+        user,
+        set,
+    }: {
+        params: any;
+        user: any;
+        set: any;
+    }) {
+        try {
+            if (!user) {
+                set.status = 401;
+                return { error: "Unauthorized" };
+            }
+
+            const { applicationId } = params;
+
+            const result = await ApplicationService.deleteApplication(
+                applicationId,
+                user.id,
+            );
+
+            return {
+                success: true,
+                message: "Draft deleted successfully",
+                data: result,
+            };
+        } catch (error: any) {
+            console.error("Delete application error:", error);
+
+            if (error.message === "Application not found") {
+                set.status = 404;
+                return { error: "Application not found" };
+            }
+
+            if (
+                error.message.includes("Unauthorized") ||
+                error.message.includes("Cannot delete")
+            ) {
+                set.status = 403;
+                return { error: error.message };
+            }
+
+            if (error.message.includes("only delete")) {
+                set.status = 400;
+                return { error: error.message };
+            }
+
+            set.status = 500;
+            return { error: "Failed to delete application" };
+        }
+    }
 }
