@@ -579,11 +579,13 @@ export class ApplicationController {
                     return {
                         id: app.id,
                         scholarshipName: app.scholarshipName,
-                        letterType: app.letterType ? {
-                            id: app.letterType.id,
-                            name: app.letterType.name,
-                            description: app.letterType.description,
-                        } : undefined,
+                        letterType: app.letterType
+                            ? {
+                                  id: app.letterType.id,
+                                  name: app.letterType.name,
+                                  description: app.letterType.description,
+                              }
+                            : undefined,
                         status: app.status,
                         currentStep: app.currentStep,
                         lastRevisionFromRole,
