@@ -50,12 +50,33 @@ export class ApplicationService {
         letterTypeId: string;
         status?: string;
     }) {
+        console.log(
+            "💾 [ApplicationService.createApplication] Starting with:",
+            {
+                namaBeasiswa: data.namaBeasiswa,
+                userId: data.userId,
+                letterTypeId: data.letterTypeId,
+            },
+        );
+
         // Find Supervisor role for currentRoleId
         const supervisorRole = await db.role.findUnique({
             where: { name: "SUPERVISOR" },
         });
 
+        console.log(
+            "👤 [ApplicationService.createApplication] Supervisor role:",
+            {
+                id: supervisorRole?.id,
+                name: supervisorRole?.name,
+            },
+        );
+
         return await db.$transaction(async (tx) => {
+            console.log(
+                "📦 [ApplicationService.createApplication] Starting transaction...",
+            );
+
             // 1. Create letter instance
             const letterInstance = await tx.letterInstance.create({
                 data: {
@@ -70,8 +91,17 @@ export class ApplicationService {
                 },
             });
 
+            console.log(
+                "✅ [ApplicationService.createApplication] LetterInstance created:",
+                {
+                    id: letterInstance.id,
+                    scholarshipName: letterInstance.scholarshipName,
+                    status: letterInstance.status,
+                },
+            );
+
             // 2. Create initial history entry for submission
-            await tx.letterHistory.create({
+            const history = await tx.letterHistory.create({
                 data: {
                     letterInstanceId: letterInstance.id,
                     actorId: data.userId,
@@ -81,6 +111,14 @@ export class ApplicationService {
                     roleId: null, // Mahasiswa doesn't have roleId
                 },
             });
+
+            console.log(
+                "📝 [ApplicationService.createApplication] History created:",
+                {
+                    id: history.id,
+                    letterInstanceId: history.letterInstanceId,
+                },
+            );
 
             return letterInstance;
         });
@@ -396,8 +434,11 @@ export class ApplicationService {
     }
 
     static async getApplicationById(id: string) {
-        return await db.letterInstance.findUnique({
-            where: { id, deletedAt: null }, // Exclude soft-deleted applications
+        return await db.letterInstance.findFirst({
+            where: {
+                id,
+                deletedAt: null,
+            },
             include: {
                 attachments: {
                     where: { deletedAt: null },

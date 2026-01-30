@@ -112,6 +112,88 @@ const suratRekomendasiRoutes = new Elysia({
         ),
     })
     .get(
+        "/applications/:applicationId/check",
+        async ({ params, user, set }) => {
+            try {
+                if (!user) {
+                    set.status = 401;
+                    return { valid: false, error: "Unauthorized" };
+                }
+
+                const applicationId = params.applicationId;
+                console.log(
+                    `🔍 [check] Validating application: ${applicationId}`,
+                );
+
+                const application =
+                    await ApplicationController.getApplicationDetailService(
+                        applicationId,
+                    );
+
+                if (!application) {
+                    console.warn(
+                        `⚠️ [check] Application not found, should redirect to create: ${applicationId}`,
+                    );
+                    set.status = 404;
+                    return {
+                        valid: false,
+                        error: "Application not found or has been deleted",
+                        shouldRedirect: true,
+                        redirectTo:
+                            "/mahasiswa/surat/surat-rekomendasi-beasiswa/baru",
+                    };
+                }
+
+                if (application.createdById !== user.id) {
+                    console.warn(
+                        `⚠️ [check] User unauthorized for application: ${applicationId}`,
+                    );
+                    set.status = 403;
+                    return {
+                        valid: false,
+                        error: "You do not have access to this application",
+                        shouldRedirect: true,
+                        redirectTo: "/mahasiswa/surat",
+                    };
+                }
+
+                return {
+                    valid: true,
+                    applicationId: application.id,
+                    scholarshipName: application.scholarshipName,
+                    status: application.status,
+                };
+            } catch (error) {
+                console.error("[check] Error:", error);
+                set.status = 500;
+                return {
+                    valid: false,
+                    error: error instanceof Error ? error.message : "Error",
+                };
+            }
+        },
+        {
+            params: t.Object({
+                applicationId: t.String(),
+            }),
+        },
+    )
+    .get(
+        "/applications/:applicationId/or-create",
+        async ({ params, user, set }) => {
+            return ApplicationController.getApplicationOrCreate({
+                params,
+                user,
+                set,
+            });
+        },
+        {
+            params: t.Object({
+                applicationId: t.String(),
+            }),
+        },
+    )
+    .get(
         "/applications/:applicationId",
         ApplicationController.getApplicationDetail,
         {
@@ -174,6 +256,199 @@ const suratRekomendasiRoutes = new Elysia({
         {
             params: t.Object({
                 attachmentId: t.String(),
+            }),
+        },
+    )
+    .get("/debug/all-instances", async ({ user }) => {
+        try {
+            if (!user) {
+                return { error: "Unauthorized" };
+            }
+
+            const instances = await Prisma.letterInstance.findMany({
+                where: {
+                    createdById: user.id,
+                },
+                select: {
+                    id: true,
+                    scholarshipName: true,
+                    status: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    deletedAt: true,
+                    letterTypeId: true,
+                },
+                orderBy: { createdAt: "desc" },
+                take: 50,
+            });
+
+            return {
+                count: instances.length,
+                userId: user.id,
+                instances,
+            };
+        } catch (error) {
+            return {
+                error: error instanceof Error ? error.message : "Error",
+            };
+        }
+    })
+    .get(
+        "/debug/instance-by-id/:instanceId",
+        async ({ params }) => {
+            try {
+                const instance = await Prisma.letterInstance.findFirst({
+                    where: {
+                        id: params.instanceId,
+                    },
+                    include: {
+                        letterType: true,
+                        attachments: true,
+                        createdBy: {
+                            select: {
+                                id: true,
+                                email: true,
+                                name: true,
+                            },
+                        },
+                    },
+                });
+
+                if (!instance) {
+                    return {
+                        error: "Instance not found",
+                        instanceId: params.instanceId,
+                        message: "This instance does not exist in the database",
+                    };
+                }
+
+                return {
+                    success: true,
+                    instance,
+                    isDeleted: instance.deletedAt !== null,
+                };
+            } catch (error) {
+                return {
+                    error: error instanceof Error ? error.message : "Error",
+                };
+            }
+        },
+        {
+            params: t.Object({
+                instanceId: t.String(),
+            }),
+        },
+    )
+    .get(
+        "/debug/instance-with-deleted/:instanceId",
+        async ({ params }) => {
+            try {
+                const instance = await Prisma.letterInstance.findFirst({
+                    where: {
+                        id: params.instanceId,
+                    },
+                    include: {
+                        letterType: true,
+                        attachments: {
+                            include: {},
+                        },
+                        createdBy: {
+                            select: {
+                                id: true,
+                                email: true,
+                                name: true,
+                            },
+                        },
+                        history: {
+                            orderBy: { createdAt: "desc" },
+                            take: 10,
+                        },
+                    },
+                });
+
+                if (!instance) {
+                    return {
+                        error: "Instance not found in database (including soft-deleted)",
+                        instanceId: params.instanceId,
+                    };
+                }
+
+                return {
+                    success: true,
+                    instance,
+                    isDeleted: instance.deletedAt !== null,
+                    deletedAt: instance.deletedAt,
+                };
+            } catch (error) {
+                return {
+                    error: error instanceof Error ? error.message : "Error",
+                };
+            }
+        },
+        {
+            params: t.Object({
+                instanceId: t.String(),
+            }),
+        },
+    )
+    .get(
+        "/validate/:instanceId",
+        async ({ params, user, set }) => {
+            try {
+                if (!user) {
+                    set.status = 401;
+                    return { error: "Unauthorized" };
+                }
+
+                const instance = await Prisma.letterInstance.findFirst({
+                    where: {
+                        id: params.instanceId,
+                        deletedAt: null, // Only check non-deleted instances
+                    },
+                    select: {
+                        id: true,
+                        createdById: true,
+                        scholarshipName: true,
+                        status: true,
+                    },
+                });
+
+                if (!instance) {
+                    set.status = 404;
+                    return {
+                        valid: false,
+                        error: "Surat tidak ditemukan atau telah dihapus",
+                        instanceId: params.instanceId,
+                    };
+                }
+
+                if (instance.createdById !== user.id) {
+                    set.status = 403;
+                    return {
+                        valid: false,
+                        error: "Anda tidak memiliki akses ke surat ini",
+                        instanceId: params.instanceId,
+                    };
+                }
+
+                return {
+                    valid: true,
+                    instance: {
+                        id: instance.id,
+                        scholarshipName: instance.scholarshipName,
+                        status: instance.status,
+                    },
+                };
+            } catch (error) {
+                set.status = 500;
+                return {
+                    error: error instanceof Error ? error.message : "Error",
+                };
+            }
+        },
+        {
+            params: t.Object({
+                instanceId: t.String(),
             }),
         },
     );

@@ -6,10 +6,24 @@ import {
     getQRCodeImageUrl,
     getQRCodeUrl,
 } from "../../../services/verification.service.ts";
+import {
+    notifyApplicationSubmitted,
+    notifyApplicationReadyForReview,
+    notifyApplicationRejected,
+    notifyApplicationRevisionRequested,
+    notifyApplicationPublished,
+} from "../../../services/notification.service.ts";
 
 const db = Prisma;
 
 export class ApplicationController {
+    /**
+     * Helper method to get basic application info without full details
+     */
+    static async getApplicationDetailService(applicationId: string) {
+        return await ApplicationService.getApplicationById(applicationId);
+    }
+
     static async createApplication({
         body,
         user,
@@ -20,6 +34,11 @@ export class ApplicationController {
         set: any;
     }) {
         try {
+            console.log(
+                "🚀 [createApplication] Started with user:",
+                user?.email,
+            );
+
             const { namaBeasiswa, values } = body;
 
             if (!user) {
@@ -43,7 +62,117 @@ export class ApplicationController {
                 letterTypeId: letterType.id,
             });
 
+            // Trigger notification to supervisors when application is submitted (PENDING)
+            try {
+                console.log(
+                    "🔔 Starting notification process for application:",
+                    application.id,
+                );
+
+                console.log("🔔 Querying database for SUPERVISOR users...");
+                const supervisors = await db.userRole.findMany({
+                    where: {
+                        role: { name: "SUPERVISOR" },
+                    },
+                    include: { user: true },
+                });
+
+                console.log(
+                    "🔔 Query completed. Found supervisors:",
+                    supervisors.length,
+                );
+
+                if (supervisors.length > 0) {
+                    console.log(
+                        "🔔 Supervisor details:",
+                        supervisors.map((s) => ({
+                            userId: s.userId,
+                            email: s.user?.email,
+                            name: s.user?.name,
+                        })),
+                    );
+                }
+
+                if (supervisors.length > 0) {
+                    const supervisorUserIds = supervisors
+                        .map((ur) => ur.user.id)
+                        .filter((id) => id !== user.id); // Don't notify the submitter
+
+                    console.log(
+                        "🔔 Supervisor user IDs after filtering (excluding submitter):",
+                        supervisorUserIds,
+                    );
+
+                    if (supervisorUserIds.length > 0) {
+                        console.log("🔔 Sending notifications...");
+                        try {
+                            console.log(
+                                "🔔 About to call notifyApplicationSubmitted",
+                            );
+                            const result = await notifyApplicationSubmitted({
+                                supervisorUserIds,
+                                applicationId: application.id,
+                                scholarshipName: namaBeasiswa,
+                                applicantName: user.name || "Mahasiswa",
+                            });
+                            console.log(
+                                "🔔 notifyApplicationSubmitted returned:",
+                                result?.length,
+                                "notifications",
+                            );
+                            console.log(
+                                "🔔 Notifikasi Submit - Success:",
+                                result?.length,
+                                "notifications sent",
+                                result?.map((r) => ({
+                                    id: r.id,
+                                    userId: r.userId,
+                                    type: r.type,
+                                })),
+                            );
+                        } catch (notifyErr) {
+                            console.error(
+                                "❌ Exception in notifyApplicationSubmitted:",
+                                notifyErr instanceof Error
+                                    ? {
+                                          message: notifyErr.message,
+                                          stack: notifyErr.stack,
+                                      }
+                                    : notifyErr,
+                            );
+                        }
+                    } else {
+                        console.log(
+                            "🔔 No supervisor user IDs after filtering (all were filtered out)",
+                        );
+                    }
+                } else {
+                    console.log(
+                        "🔔 No supervisors found in database with role SUPERVISOR",
+                    );
+                }
+            } catch (notifyError) {
+                console.error(
+                    "❌ Error in notification block:",
+                    notifyError instanceof Error
+                        ? {
+                              message: notifyError.message,
+                              stack: notifyError.stack,
+                          }
+                        : notifyError,
+                );
+            }
+
             set.status = 201;
+            console.log(
+                "✅ [createApplication] Successfully created application:",
+                {
+                    id: application.id,
+                    scholarshipName: application.scholarshipName,
+                    status: application.status,
+                    createdById: application.createdById,
+                },
+            );
             return {
                 success: true,
                 data: application,
@@ -330,6 +459,174 @@ export class ApplicationController {
         }
     }
 
+    /**
+     * Get application or create new if not found
+     * Useful for handling cases where old application IDs are no longer valid
+     */
+    static async getApplicationOrCreate({
+        params,
+        user,
+        set,
+    }: {
+        params: any;
+        user: any;
+        set: any;
+    }) {
+        try {
+            const { applicationId } = params;
+
+            if (!user) {
+                set.status = 401;
+                return { error: "Unauthorized" };
+            }
+
+            console.log(
+                "📥 [getApplicationOrCreate] Fetching or creating application:",
+                applicationId,
+            );
+
+            // Try to fetch existing application
+            let application =
+                await ApplicationService.getApplicationById(applicationId);
+
+            if (application) {
+                console.log(
+                    "✅ [getApplicationOrCreate] Found existing application:",
+                    applicationId,
+                );
+                // Return existing application
+                const mahasiswa = application.createdBy?.mahasiswa;
+                const formData = {
+                    namaLengkap: application.createdBy?.name || "",
+                    email: application.createdBy?.email || "",
+                    nim: mahasiswa?.nim || "",
+                    departemen: mahasiswa?.departemen?.name || "",
+                    programStudi: mahasiswa?.programStudi?.name || "",
+                    tempatLahir: mahasiswa?.tempatLahir || "",
+                    tanggalLahir: mahasiswa?.tanggalLahir || "",
+                    noHp: mahasiswa?.noHp || "",
+                    semester: mahasiswa?.semester
+                        ? String(mahasiswa.semester)
+                        : "",
+                    ipk: mahasiswa?.ipk ? String(mahasiswa.ipk) : "",
+                    ips: mahasiswa?.ips ? String(mahasiswa.ips) : "",
+                    ...(application.values &&
+                    typeof application.values === "object"
+                        ? application.values
+                        : {}),
+                    namaBeasiswa: application.scholarshipName,
+                };
+
+                return {
+                    success: true,
+                    data: {
+                        ...application,
+                        formData,
+                        attachments: await Promise.all(
+                            application.attachments.map(async (att: any) => {
+                                let downloadUrl = "";
+                                try {
+                                    downloadUrl =
+                                        await MinioService.getPresignedUrl(
+                                            "",
+                                            att.domain,
+                                            3600,
+                                        );
+                                } catch (err) {
+                                    console.error(
+                                        "Failed to generate presigned URL:",
+                                        err,
+                                    );
+                                }
+                                return { ...att, downloadUrl };
+                            }),
+                        ),
+                        verification: application.verification
+                            ? {
+                                  code: application.verification.code,
+                                  verifiedCount:
+                                      application.verification.verifiedCount,
+                                  qrCodeUrl: getQRCodeImageUrl(
+                                      application.verification.code,
+                                      process.env.NEXT_PUBLIC_APP_URL ||
+                                          "http://localhost:3000",
+                                  ),
+                                  verifyLink: getQRCodeUrl(
+                                      application.verification.code,
+                                      process.env.NEXT_PUBLIC_APP_URL ||
+                                          "http://localhost:3000",
+                                  ),
+                              }
+                            : null,
+                    },
+                };
+            }
+
+            // Application not found, create new DRAFT
+            console.log(
+                "⚠️ [getApplicationOrCreate] Application not found, creating new DRAFT",
+            );
+
+            const letterType = await db.letterType.findUnique({
+                where: { id: "srb-type-id" },
+            });
+
+            if (!letterType) {
+                set.status = 404;
+                return { error: "LetterType not found" };
+            }
+
+            // Create new draft application
+            const newApplication = await ApplicationService.createApplication({
+                namaBeasiswa: "Surat Rekomendasi Beasiswa",
+                values: {},
+                userId: user.id,
+                letterTypeId: letterType.id,
+                status: "DRAFT",
+            });
+
+            console.log(
+                "✅ [getApplicationOrCreate] Created new DRAFT application:",
+                {
+                    id: newApplication.id,
+                    createdById: newApplication.createdById,
+                },
+            );
+
+            // Return new application (minimal data for DRAFT)
+            return {
+                success: true,
+                isNewDraft: true,
+                data: {
+                    id: newApplication.id,
+                    scholarshipName: newApplication.scholarshipName,
+                    status: newApplication.status,
+                    currentStep: newApplication.currentStep,
+                    createdBy: {
+                        id: user.id,
+                        email: user.email,
+                        name: user.name,
+                    },
+                    formData: {
+                        namaLengkap: user.name || "",
+                        email: user.email || "",
+                    },
+                    attachments: [],
+                    verification: null,
+                },
+            };
+        } catch (error) {
+            console.error("Get or create application error:", error);
+            set.status = 500;
+            return {
+                error:
+                    error instanceof Error
+                        ? error.message
+                        : "Failed to fetch or create application",
+            };
+        }
+    }
+
     static async getApplicationDetail({
         params,
         set,
@@ -339,12 +636,28 @@ export class ApplicationController {
     }) {
         try {
             const { applicationId } = params;
+            console.log(
+                "📥 [getApplicationDetail] Fetching application:",
+                applicationId,
+            );
+
             const application =
                 await ApplicationService.getApplicationById(applicationId);
 
             if (!application) {
+                console.warn(
+                    "⚠️ [getApplicationDetail] Application not found:",
+                    {
+                        applicationId,
+                        message: "Surat tidak ditemukan atau telah dihapus",
+                    },
+                );
                 set.status = 404;
-                return { error: "Application not found" };
+                return {
+                    error: "Surat tidak ditemukan atau telah dihapus. Silakan kembali ke daftar surat dan buat yang baru.",
+                    code: "APPLICATION_NOT_FOUND",
+                    applicationId,
+                };
             }
 
             const mahasiswa = application.createdBy?.mahasiswa;
@@ -412,7 +725,10 @@ export class ApplicationController {
         } catch (error) {
             console.error("Get application error:", error);
             set.status = 500;
-            return { error: "Failed to fetch application" };
+            return {
+                error: "Gagal mengambil data surat. Silakan coba lagi.",
+                code: "FETCH_ERROR",
+            };
         }
     }
 
@@ -582,6 +898,157 @@ export class ApplicationController {
                     roleId: user.roleId || null, // Pass user's roleId to track which role processed it
                 },
             );
+
+            // Trigger notifications based on action
+            try {
+                const userRoles = Array.isArray(user?.roles)
+                    ? user.roles
+                    : [user?.role].filter(Boolean);
+                const currentRoleName = userRoles[0] || "Unknown";
+
+                switch (action) {
+                    case "approve": {
+                        // Notify next role (if not completed)
+                        if (newStatus === "IN_PROGRESS" && newStep <= 4) {
+                            const STEP_ROLE_MAP_NAMES: Record<number, string> =
+                                {
+                                    1: "SUPERVISOR",
+                                    2: "MANAJER_TU",
+                                    3: "WAKIL_DEKAN_1",
+                                    4: "UPA",
+                                };
+                            const nextRoleName = STEP_ROLE_MAP_NAMES[newStep];
+                            if (nextRoleName) {
+                                const nextRoleUsers =
+                                    await db.userRole.findMany({
+                                        where: { role: { name: nextRoleName } },
+                                        include: { user: true },
+                                    });
+                                if (nextRoleUsers.length > 0) {
+                                    const nextRoleUserIds = nextRoleUsers.map(
+                                        (ur) => ur.user.id,
+                                    );
+                                    await notifyApplicationReadyForReview({
+                                        nextRoleUserIds,
+                                        applicationId,
+                                        scholarshipName:
+                                            currentApp.scholarshipName ||
+                                            "Surat Rekomendasi",
+                                        applicantName:
+                                            currentApp.createdBy?.name ||
+                                            "Mahasiswa",
+                                        currentRoleName,
+                                    });
+                                }
+                            }
+                        }
+                        // Notify applicant if completed (published)
+                        else if (newStatus === "COMPLETED") {
+                            await notifyApplicationPublished({
+                                applicantUserId: currentApp.createdById,
+                                applicationId,
+                                scholarshipName:
+                                    currentApp.scholarshipName ||
+                                    "Surat Rekomendasi",
+                            });
+                        }
+                        break;
+                    }
+
+                    case "reject": {
+                        // Notify applicant (mahasiswa) about rejection
+                        await notifyApplicationRejected({
+                            applicantUserId: currentApp.createdById,
+                            applicationId,
+                            scholarshipName:
+                                currentApp.scholarshipName ||
+                                "Surat Rekomendasi",
+                            rejectionReason: notes,
+                            rejectedByRole: currentRoleName,
+                        });
+                        break;
+                    }
+
+                    case "revision": {
+                        // Determine target role for revision
+                        let targetRoleName = "";
+                        if (newStep === 0) {
+                            // Revision to Mahasiswa
+                            await notifyApplicationRevisionRequested({
+                                applicantUserId: currentApp.createdById,
+                                applicationId,
+                                scholarshipName:
+                                    currentApp.scholarshipName ||
+                                    "Surat Rekomendasi",
+                                revisionNotes: notes,
+                                requestedByRole: currentRoleName,
+                            });
+                        } else {
+                            // Revision to specific role
+                            const STEP_ROLE_MAP_NAMES: Record<number, string> =
+                                {
+                                    1: "SUPERVISOR",
+                                    2: "MANAJER_TU",
+                                    3: "WAKIL_DEKAN_1",
+                                    4: "UPA",
+                                };
+                            targetRoleName = STEP_ROLE_MAP_NAMES[newStep] || "";
+
+                            if (targetRoleName) {
+                                const targetRoleUsers =
+                                    await db.userRole.findMany({
+                                        where: {
+                                            role: { name: targetRoleName },
+                                        },
+                                        include: { user: true },
+                                    });
+
+                                if (targetRoleUsers.length > 0) {
+                                    const targetRoleUserIds =
+                                        targetRoleUsers.map((ur) => ur.user.id);
+                                    // Notify target role about revision task
+                                    await notifyApplicationReadyForReview({
+                                        nextRoleUserIds: targetRoleUserIds,
+                                        applicationId,
+                                        scholarshipName:
+                                            currentApp.scholarshipName ||
+                                            "Surat Rekomendasi",
+                                        applicantName:
+                                            currentApp.createdBy?.name ||
+                                            "Mahasiswa",
+                                        currentRoleName: `${currentRoleName} (Revisi)`,
+                                    });
+                                }
+                            }
+
+                            // Also notify applicant about revision
+                            await notifyApplicationRevisionRequested({
+                                applicantUserId: currentApp.createdById,
+                                applicationId,
+                                scholarshipName:
+                                    currentApp.scholarshipName ||
+                                    "Surat Rekomendasi",
+                                revisionNotes: notes,
+                                requestedByRole: currentRoleName,
+                            });
+                        }
+                        break;
+                    }
+                }
+            } catch (notifyError) {
+                console.error(
+                    "❌ Failed to send notification in verifyApplication:",
+                    {
+                        error:
+                            notifyError instanceof Error
+                                ? notifyError.message
+                                : notifyError,
+                        action,
+                        applicationId,
+                    },
+                );
+                // Don't fail the request if notification fails
+            }
 
             return { success: true, data: updated };
         } catch (error) {
