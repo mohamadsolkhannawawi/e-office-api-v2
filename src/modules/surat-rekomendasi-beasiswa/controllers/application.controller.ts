@@ -295,7 +295,7 @@ export class ApplicationController {
             if (isResubmissionAfterRevision || isInitialSubmissionFromDraft) {
                 const actionNote = isResubmissionAfterRevision
                     ? "Revisi selesai, pengajuan disubmit ulang ke Supervisor Akademik"
-                    : "Aplikasi disubmit ke Supervisor Akademik";
+                    : "Pengajuan Surat Rekomendasi Beasiswa disubmit ke Supervisor Akademik";
 
                 const actionType = isResubmissionAfterRevision
                     ? "resubmit"
