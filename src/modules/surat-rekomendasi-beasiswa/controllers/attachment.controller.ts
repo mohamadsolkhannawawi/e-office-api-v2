@@ -17,12 +17,37 @@ export class AttachmentController {
             const { letterInstanceId } = params;
             const { file, category } = body;
 
-            // Verify letter instance exists
-            const letterInstance = await db.letterInstance.findUnique({
+            console.log("📤 [uploadAttachment] Started with:", {
+                letterInstanceId,
+                category,
+                fileName: file?.name,
+            });
+
+            // Verify letter instance exists - use findFirst without soft delete filter
+            console.log(
+                `🔍 [uploadAttachment] Checking if letterInstance exists: ${letterInstanceId}`,
+            );
+            const letterInstance = await db.letterInstance.findFirst({
                 where: { id: letterInstanceId },
             });
 
+            console.log(
+                "📦 [uploadAttachment] letterInstance query result:",
+                letterInstance
+                    ? {
+                          FOUND: true,
+                          id: letterInstance.id,
+                          scholarshipName: letterInstance.scholarshipName,
+                          deletedAt: letterInstance.deletedAt,
+                      }
+                    : "NOT FOUND",
+            );
+
             if (!letterInstance) {
+                console.error(
+                    `❌ [uploadAttachment] Letter instance not found for ID: ${letterInstanceId}`,
+                    "Possible reasons: not created yet, deleted, or wrong ID",
+                );
                 set.status = 404;
                 return { error: "Letter instance not found" };
             }
@@ -55,12 +80,20 @@ export class AttachmentController {
         try {
             const { letterInstanceId } = params;
 
-            // Verify letter instance exists
-            const letterInstance = await db.letterInstance.findUnique({
+            console.log(
+                "📋 [getAttachments] Fetching for letterInstanceId:",
+                letterInstanceId,
+            );
+
+            // Verify letter instance exists - use findFirst without soft delete filter
+            const letterInstance = await db.letterInstance.findFirst({
                 where: { id: letterInstanceId },
             });
 
             if (!letterInstance) {
+                console.error(
+                    `❌ [getAttachments] Letter instance not found: ${letterInstanceId}`,
+                );
                 set.status = 404;
                 return { error: "Letter instance not found" };
             }
