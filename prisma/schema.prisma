@@ -140,6 +140,7 @@ model User {
   LetterInstance LetterInstance[]
   LetterHistory  LetterHistory[]
   UserSignature  UserSignature[]
+  UserStamp      UserStamp[]      // 🔴 TAMBAHAN: Relasi ke stempel template
   Notification   Notification[] // 🔴 TAMBAHAN
 
   createdAt DateTime? @default(now())
@@ -308,6 +309,10 @@ model LetterInstance {
   currentRoleId String?        // 🔴 TAMBAHAN
   currentRole   Role? @relation(fields: [currentRoleId], references: [id]) // 🔴 TAMBAHAN
   publishedAt    DateTime?     // 🔴 TAMBAHAN
+  
+  stampId        String?       // 🔴 TAMBAHAN: Reference ke stamp yang diaplikasikan
+  stamp          UserStamp? @relation(fields: [stampId], references: [id]) // 🔴 TAMBAHAN: Relasi ke UserStamp
+  stampAppliedAt DateTime?     // 🔴 TAMBAHAN: Timestamp saat stempel diterapkan
 
   history  LetterHistory[]
   versions LetterVersion[]
@@ -392,6 +397,24 @@ model UserSignature {
   updatedAt DateTime @updatedAt
   
   @@map("user_signature")
+}
+
+model UserStamp {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  url       String
+  isDefault Boolean  @default(false)
+  stampType String   // TEMPLATE, DRAWN, UPLOADED
+  
+  letterInstances LetterInstance[] // 🔴 TAMBAHAN: Reverse relation
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([userId])
+  @@map("user_stamp")
 }
 
 /* ===================== NOTIFICATION ===================== */
