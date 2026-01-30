@@ -2,6 +2,7 @@ import { Elysia, t } from "elysia";
 import { Prisma } from "@backend/db/index.ts";
 import { auth } from "@backend/lib/auth.ts";
 import crypto from "crypto";
+import { MinioService } from "@backend/shared/services/minio.service.ts";
 
 /**
  * User Signature Routes
@@ -19,6 +20,10 @@ const signatureRoutes = new Elysia({
             user: session?.user,
             session,
         };
+    })
+    .onBeforeHandle(async () => {
+        // Ensure MinIO bucket exists
+        await MinioService.ensureBucket();
     })
 
     /**
@@ -47,16 +52,59 @@ const signatureRoutes = new Elysia({
                 throw new Error("Unauthorized");
             }
 
+            let finalUrl = body.url;
+
+            // If URL is a base64 data URL, convert and upload to MinIO
+            if (body.url.startsWith("data:image")) {
+                try {
+                    // Parse base64 data
+                    const matches = body.url.match(
+                        /^data:image\/(\w+);base64,(.+)$/,
+                    );
+                    if (!matches || !matches[2]) {
+                        throw new Error("Invalid base64 image format");
+                    }
+
+                    const [, extension, base64Data] = matches;
+                    const buffer = Buffer.from(base64Data, "base64");
+
+                    // Create a File-like object for MinIO
+                    const fileName = `signature_${user.id}_${Date.now()}.${extension}`;
+                    const file = new File([buffer], fileName, {
+                        type: `image/${extension}`,
+                    });
+
+                    // Upload to MinIO using static method
+                    const uploadResult = await MinioService.uploadFile(
+                        file,
+                        "signature/",
+                        `image/${extension}`,
+                    );
+                    finalUrl = uploadResult.url;
+                } catch (uploadError) {
+                    console.error(
+                        "Failed to upload signature to MinIO:",
+                        uploadError,
+                    );
+                    throw new Error(
+                        "Failed to upload signature: " +
+                            (uploadError instanceof Error
+                                ? uploadError.message
+                                : "Unknown error"),
+                    );
+                }
+            }
+
             // Generate checksum for signature data
             const checksum = crypto
                 .createHash("sha256")
-                .update(`${body.url}|${new Date().toISOString()}`)
+                .update(`${finalUrl}|${new Date().toISOString()}`)
                 .digest("hex");
 
             const signature = await Prisma.userSignature.create({
                 data: {
                     userId: user.id,
-                    url: body.url,
+                    url: finalUrl,
                     signatureType: body.signatureType || "UPLOADED",
                     isDefault: body.isDefault || false,
                     checksum,
