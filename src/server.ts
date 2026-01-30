@@ -7,6 +7,7 @@ import { autoload } from "elysia-autoload";
 import env from "env-var";
 import suratRekomendasiRoutes from "./modules/surat-rekomendasi-beasiswa/routes.ts";
 import notificationRoutes from "./routes/notifications.ts";
+import signatureRoutes from "./routes/signatures.ts";
 
 import { PrismaClient } from "@backend/db/index.ts";
 
@@ -81,7 +82,10 @@ export const app = new Elysia()
     .all("/api/auth/*", ({ request }) => auth.handler(request))
     // Mount routes under /api prefix to match Next.js rewrite
     .group("/api", (api) =>
-        api.use(suratRekomendasiRoutes).use(notificationRoutes),
+        api
+            .use(suratRekomendasiRoutes)
+            .use(notificationRoutes)
+            .use(signatureRoutes),
     )
     .use(
         await autoload({
