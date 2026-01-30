@@ -495,6 +495,12 @@ export class ApplicationController {
                 filters.createdById = user.id;
             } else if (isMahasiswa) {
                 filters.createdById = user.id;
+                // For Mahasiswa, exclude REJECTED and COMPLETED from IN_PROGRESS view
+                // Mahasiswa can see ALL applications that are not yet final
+                // This includes revisions at any stage
+                if (status === "IN_PROGRESS") {
+                    filters.excludeStatus = ["REJECTED", "COMPLETED"];
+                }
             } else {
                 // For reviewers/staff, exclude DRAFT applications
                 filters.excludeStatus = ["DRAFT"];
@@ -552,12 +558,31 @@ export class ApplicationController {
                         }
                     }
 
+                    // Find the last actor who approved or rejected (for COMPLETED/REJECTED status)
+                    let lastActorRole: string | undefined = undefined;
+                    if (
+                        (app.status === "COMPLETED" ||
+                            app.status === "REJECTED") &&
+                        app.history &&
+                        Array.isArray(app.history)
+                    ) {
+                        // Get the last entry in history (most recent action)
+                        const lastHistory = app.history[app.history.length - 1];
+                        if (lastHistory && lastHistory.role?.name) {
+                            lastActorRole =
+                                ApplicationController.formatRoleName(
+                                    lastHistory.role.name,
+                                );
+                        }
+                    }
+
                     return {
                         id: app.id,
                         scholarshipName: app.scholarshipName,
                         status: app.status,
                         currentStep: app.currentStep,
                         lastRevisionFromRole,
+                        lastActorRole,
                         applicantName: app.createdBy?.name || "",
                         updatedAt: app.updatedAt,
                         formData: {
@@ -904,6 +929,7 @@ export class ApplicationController {
             let newStatus = currentApp.status;
             let newStep = currentApp.currentStep ?? 1;
             let nextRoleId: string | undefined = undefined;
+            let targetRoleNameForHistory = ""; // Track target role for revision history
             // Initialize update values with existing values or empty object
             // We need to cast values to any to allow adding properties
             let newValues = (currentApp.values as any) || {};
@@ -967,8 +993,10 @@ export class ApplicationController {
 
                         if (newStep === 0) {
                             nextRoleId = undefined; // Null/Undefined = Mahasiswa
+                            targetRoleNameForHistory = "Mahasiswa";
                         } else {
                             const targetRoleName = STEP_ROLE_MAP[newStep];
+                            targetRoleNameForHistory = targetRoleName || "";
                             if (targetRoleName) {
                                 const role = await db.role.findUnique({
                                     where: { name: targetRoleName },
@@ -982,8 +1010,10 @@ export class ApplicationController {
                         // Determine role logic same as above
                         if (newStep === 0) {
                             nextRoleId = undefined;
+                            targetRoleNameForHistory = "Mahasiswa";
                         } else {
                             const targetRoleName = STEP_ROLE_MAP[newStep];
+                            targetRoleNameForHistory = targetRoleName || "";
                             if (targetRoleName) {
                                 const role = await db.role.findUnique({
                                     where: { name: targetRoleName },
@@ -1034,7 +1064,10 @@ export class ApplicationController {
                 {
                     actorId: user.id,
                     action: action,
-                    note: notes,
+                    note:
+                        action === "revision" && targetRoleNameForHistory
+                            ? `${notes || ""} [ke ${targetRoleNameForHistory}]`
+                            : notes,
                     roleId: user.roleId || null, // Pass user's roleId to track which role processed it
                 },
             );
