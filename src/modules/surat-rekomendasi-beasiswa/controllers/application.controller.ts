@@ -263,15 +263,19 @@ export class ApplicationController {
             const isResubmissionAfterRevision =
                 existing.status === "REVISION" && status === "PENDING";
 
+            // Check if this is initial submission from DRAFT to PENDING
+            const isInitialSubmissionFromDraft =
+                existing.status === "DRAFT" && status === "PENDING";
+
             let updateData: any = {
                 namaBeasiswa,
                 values,
                 status,
             };
 
-            // If resubmitting after revision, always go back to step 1 (Supervisor Akademik)
+            // If resubmitting after revision or initial submit from draft, always go back to step 1 (Supervisor Akademik)
             // This ensures vertical approval flow from the beginning
-            if (isResubmissionAfterRevision) {
+            if (isResubmissionAfterRevision || isInitialSubmissionFromDraft) {
                 // Always reset to step 1 (Supervisor Akademik) after resubmission
                 const supervisorRole = await db.role.findUnique({
                     where: { name: "SUPERVISOR" },
@@ -287,18 +291,107 @@ export class ApplicationController {
                 updateData,
             );
 
-            // If resubmission after revision, create history entry
-            if (isResubmissionAfterRevision) {
+            // If resubmission after revision or initial submit from draft, create history entry
+            if (isResubmissionAfterRevision || isInitialSubmissionFromDraft) {
+                const actionNote = isResubmissionAfterRevision
+                    ? "Revisi selesai, pengajuan disubmit ulang ke Supervisor Akademik"
+                    : "Aplikasi disubmit ke Supervisor Akademik";
+
+                const actionType = isResubmissionAfterRevision
+                    ? "resubmit"
+                    : "submit";
+
                 await db.letterHistory.create({
                     data: {
                         letterInstanceId: applicationId,
                         actorId: user.id,
-                        action: "resubmit",
-                        note: "Revisi selesai, pengajuan disubmit ulang ke Supervisor Akademik",
+                        action: actionType,
+                        note: actionNote,
                         status: "PENDING",
                         roleId: null, // Mahasiswa doesn't have roleId
                     },
                 });
+
+                // Trigger notification to supervisors
+                try {
+                    const notificationContext = isResubmissionAfterRevision
+                        ? "resubmission after revision"
+                        : "initial submission";
+
+                    console.log(
+                        "🔔 Starting notification process for " +
+                            notificationContext +
+                            ":",
+                        applicationId,
+                    );
+
+                    const supervisors = await db.userRole.findMany({
+                        where: {
+                            role: { name: "SUPERVISOR" },
+                        },
+                        include: { user: true },
+                    });
+
+                    console.log(
+                        "🔔 Found supervisors for notification (" +
+                            notificationContext +
+                            "):",
+                        supervisors.length,
+                    );
+
+                    if (supervisors.length > 0) {
+                        const supervisorUserIds = supervisors
+                            .map((ur) => ur.user.id)
+                            .filter((id) => id !== user.id); // Don't notify the submitter
+
+                        console.log(
+                            "🔔 Supervisor user IDs after filtering:",
+                            supervisorUserIds,
+                        );
+
+                        if (supervisorUserIds.length > 0) {
+                            try {
+                                const result = await notifyApplicationSubmitted(
+                                    {
+                                        supervisorUserIds,
+                                        applicationId: applicationId,
+                                        scholarshipName: namaBeasiswa,
+                                        applicantName: user.name || "Mahasiswa",
+                                    },
+                                );
+                                console.log(
+                                    "🔔 Notification sent to supervisors (" +
+                                        notificationContext +
+                                        "):",
+                                    result?.length,
+                                    "notifications",
+                                );
+                            } catch (notifyErr) {
+                                console.error(
+                                    "❌ Exception in notification (" +
+                                        notificationContext +
+                                        "):",
+                                    notifyErr instanceof Error
+                                        ? {
+                                              message: notifyErr.message,
+                                              stack: notifyErr.stack,
+                                          }
+                                        : notifyErr,
+                                );
+                            }
+                        }
+                    }
+                } catch (notifyError) {
+                    console.error(
+                        "❌ Error in notification block:",
+                        notifyError instanceof Error
+                            ? {
+                                  message: notifyError.message,
+                                  stack: notifyError.stack,
+                              }
+                            : notifyError,
+                    );
+                }
             }
 
             return { success: true, data: updated };
