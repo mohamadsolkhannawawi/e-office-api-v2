@@ -1,9 +1,13 @@
 import { Prisma } from "@backend/db/index.ts";
+import { generateNextLetterNumber } from "@backend/services/letterNumbering.service.ts";
 
 /**
  * Service untuk generate nomor surat otomatis
  * Format: {nomor}/UN7.F8.1/KM/{month_romawi}/{year}
  * Contoh: 001/UN7.F8.1/KM/I/2026
+ *
+ * UPDATED: Sekarang menggunakan last published number sebagai base,
+ * bukan hanya simple increment dari counter
  */
 
 // Konversi angka ke angka romawi
@@ -31,7 +35,7 @@ const toRomanNumeral = (num: number): string => {
 
 /**
  * Generate nomor surat baru dengan format standar
- * Menggunakan atomic increment untuk menghindari race condition
+ * Sekarang menggunakan last published number + 1 sebagai base
  */
 export async function generateLetterNumber(
     letterTypeCode: string = "SRB",
@@ -39,32 +43,16 @@ export async function generateLetterNumber(
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth() + 1; // 1-12
-    const monthRoman = toRomanNumeral(month);
 
-    // Atomic upsert dengan increment
-    const counter = await Prisma.letterCounter.upsert({
-        where: {
-            year_type: { year, type: letterTypeCode },
-        },
-        update: {
-            count: { increment: 1 },
-        },
-        create: {
-            year,
-            type: letterTypeCode,
-            count: 1,
-        },
-    });
+    // Get next number berdasarkan last published
+    const next = await generateNextLetterNumber(year, month, letterTypeCode);
 
-    // Pad number dengan leading zeros (3 digit)
-    const sequence = String(counter.count).padStart(3, "0");
-
-    // Format: {nomor}/UN7.F8.1/KM/{month_romawi}/{year}
-    return `${sequence}/UN7.F8.1/KM/${monthRoman}/${year}`;
+    return next.number;
 }
 
 /**
  * Preview nomor surat berikutnya (tanpa increment)
+ * Menggunakan last published number + 1
  */
 export async function previewNextLetterNumber(
     letterTypeCode: string = "SRB",
@@ -72,19 +60,11 @@ export async function previewNextLetterNumber(
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
-    const monthRoman = toRomanNumeral(month);
 
-    // Get current counter tanpa increment
-    const counter = await Prisma.letterCounter.findUnique({
-        where: {
-            year_type: { year, type: letterTypeCode },
-        },
-    });
+    // Get next number berdasarkan last published
+    const next = await generateNextLetterNumber(year, month, letterTypeCode);
 
-    const nextCount = (counter?.count || 0) + 1;
-    const sequence = String(nextCount).padStart(3, "0");
-
-    return `${sequence}/UN7.F8.1/KM/${monthRoman}/${year}`;
+    return next.number;
 }
 
 /**

@@ -47,9 +47,15 @@ const letterNumberRoutes = new Elysia({
      */
     .post(
         "/generate",
-        async ({ user, body }) => {
+        async ({ user, body, set }) => {
             if (!user) {
-                throw new Error("Unauthorized");
+                set.status = 401;
+                return {
+                    success: false,
+                    error: "Unauthorized",
+                    message:
+                        "User must be authenticated to generate letter numbers",
+                };
             }
 
             const type = body?.type || "SRB";
@@ -84,6 +90,7 @@ const letterNumberRoutes = new Elysia({
             }
 
             return {
+                success: true,
                 data: {
                     letterNumber: number,
                     verification: verificationData,
