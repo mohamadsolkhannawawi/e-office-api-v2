@@ -11,6 +11,7 @@ import signatureRoutes from "./routes/signatures.ts";
 import stampRoutes from "./routes/stamps.ts";
 import letterNumberRoutes from "./routes/master/letterNumber.ts";
 import letterNumberingRoutes from "./routes/master/letterNumbering.ts";
+import { templatesRoute } from "./routes/templates/index.ts"; // 🔴 TAMBAHAN
 
 import { PrismaClient } from "@backend/db/index.ts";
 
@@ -90,6 +91,7 @@ export const app = new Elysia()
             .use(notificationRoutes)
             .use(signatureRoutes)
             .use(stampRoutes)
+            .use(templatesRoute) // 🔴 TAMBAHAN: Template routes
             .group("/master", (master) =>
                 master.use(letterNumberRoutes).use(letterNumberingRoutes),
             ),
