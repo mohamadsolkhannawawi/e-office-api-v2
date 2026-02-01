@@ -1636,7 +1636,8 @@ export class ApplicationController {
 
             // Delete old generation log if exists
             if (existingLog) {
-                await db.documentGenerationLog.delete({
+                // Use deleteMany to avoid error if record is already deleted by concurrent request
+                await db.documentGenerationLog.deleteMany({
                     where: { id: existingLog.id },
                 });
             }
@@ -1663,6 +1664,71 @@ export class ApplicationController {
                 error instanceof Error ? error.message : error,
             );
             // Don't throw - this is a background operation
+        }
+    }
+
+    static async saveSignature({
+        params,
+        body,
+        set,
+    }: {
+        params: any;
+        body: any;
+        set: any;
+    }) {
+        try {
+            const { applicationId } = params;
+            const { signatureUrl } = body;
+
+            if (!signatureUrl) {
+                set.status = 400;
+                return { error: "Signature URL is required" };
+            }
+
+            // Get current application to preserve existing values
+            const application =
+                await ApplicationService.getApplicationById(applicationId);
+
+            if (!application) {
+                set.status = 404;
+                return { error: "Application not found" };
+            }
+
+            // Update application values with WD1 signature
+            const currentValues = (application.values as any) || {};
+            const updatedValues = {
+                ...currentValues,
+                wd1_signature: signatureUrl,
+            };
+
+            await db.letterInstance.update({
+                where: { id: applicationId },
+                data: {
+                    values: updatedValues,
+                },
+            });
+
+            // Trigger auto-generation immediately
+            console.log(
+                `📄 [saveSignature] Triggering auto-generate for ${applicationId}`,
+            );
+            try {
+                await ApplicationController.autoGenerateTemplate(
+                    applicationId,
+                    applicationId,
+                );
+            } catch (genError) {
+                console.error(
+                    "❌ [saveSignature] Template generation failed:",
+                    genError,
+                );
+            }
+
+            return { success: true };
+        } catch (error) {
+            console.error("Save signature error:", error);
+            set.status = 500;
+            return { error: "Failed to save signature" };
         }
     }
 }
