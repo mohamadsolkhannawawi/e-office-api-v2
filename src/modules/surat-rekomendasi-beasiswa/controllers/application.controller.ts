@@ -1517,20 +1517,23 @@ export class ApplicationController {
                 });
 
                 if (wd1Users.length > 0) {
-                    // Get the first WD1 user's default signature
-                    const wd1Signature = await db.userSignature.findFirst({
-                        where: {
-                            userId: wd1Users[0].userId,
-                            isDefault: true,
-                        },
-                        orderBy: { createdAt: "desc" },
-                    });
+                    const firstWd1User = wd1Users[0];
+                    if (firstWd1User) {
+                        // Get the first WD1 user's default signature
+                        const wd1Signature = await db.userSignature.findFirst({
+                            where: {
+                                userId: firstWd1User.userId,
+                                isDefault: true,
+                            },
+                            orderBy: { createdAt: "desc" },
+                        });
 
-                    if (wd1Signature) {
-                        signatureUrl = wd1Signature.url;
-                        console.log(
-                            `✅ [autoGenerateTemplate] WD1 signature from user: ${signatureUrl}`,
-                        );
+                        if (wd1Signature) {
+                            signatureUrl = wd1Signature.url;
+                            console.log(
+                                `✅ [autoGenerateTemplate] WD1 signature from user: ${signatureUrl}`,
+                            );
+                        }
                     }
                 }
             }
