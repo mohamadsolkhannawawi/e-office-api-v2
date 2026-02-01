@@ -2,6 +2,7 @@ import { Elysia, t } from "elysia";
 import { Prisma } from "@backend/db/index.ts";
 import { auth } from "@backend/lib/auth.ts";
 import { MinioService } from "@backend/shared/services/minio.service.ts";
+import { ApplicationController } from "@backend/modules/surat-rekomendasi-beasiswa/controllers/application.controller.ts";
 
 /**
  * User Stamp Routes (UPA)
@@ -270,6 +271,27 @@ const stampRoutes = new Elysia({
                         stampAppliedAt: new Date(),
                     },
                 });
+
+                // 🔴 Trigger Auto-Generation to ensure PDF has the new stamp
+                try {
+                    console.log(
+                        `📄 [Stamp] Triggering auto-generate for ${params.applicationId}`,
+                    );
+                    // Dynamic import to avoid potential circular dependency issues if any,
+                    // or just import at top level if clean.
+                    // Using top-level import is better if structure allows, but let's see.
+                    // For now, I'll assume we can import it.
+                    await ApplicationController.autoGenerateTemplate(
+                        params.applicationId,
+                        params.applicationId,
+                    );
+                } catch (genError) {
+                    console.error(
+                        "❌ [Stamp] Failed to regenerate document:",
+                        genError,
+                    );
+                    // Don't fail the request, just log error
+                }
 
                 return {
                     success: true,
