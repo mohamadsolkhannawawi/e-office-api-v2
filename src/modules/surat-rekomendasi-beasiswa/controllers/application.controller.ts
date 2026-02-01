@@ -1301,6 +1301,28 @@ export class ApplicationController {
                 // Don't fail the request if notification fails
             }
 
+            // 🔴 Trigger Auto-Generation to ensure PDF reflects the new status/signature/number
+            try {
+                console.log(
+                    `📄 [verifyApplication] Triggering auto-generate for ${applicationId}`,
+                );
+                // Call static method within same class
+                ApplicationController.autoGenerateTemplate(
+                    applicationId,
+                    applicationId,
+                ).catch((err) => {
+                    console.error(
+                        "❌ [verifyApplication] Background template generation failed:",
+                        err,
+                    );
+                });
+            } catch (genError) {
+                console.error(
+                    "❌ [verifyApplication] Failed to initiate generation:",
+                    genError,
+                );
+            }
+
             return { success: true, data: updated };
         } catch (error) {
             console.error("Verify application error:", error);
