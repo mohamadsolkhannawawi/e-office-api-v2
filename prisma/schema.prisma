@@ -256,8 +256,9 @@ model LetterType {
   name        String
   description String?
 
-  templates      LetterTemplate[]
-  letterInstance LetterInstance[]
+  templates         LetterTemplate[]
+  documentTemplates DocumentTemplate[] // 🔴 TAMBAHAN: Relasi ke document template
+  letterInstance    LetterInstance[]
 
   createdAt DateTime? @default(now())
   updatedAt DateTime? @updatedAt
@@ -269,6 +270,12 @@ model LetterType {
 enum TemplateEngine {
   HANDLEBARS
   RAW
+}
+
+enum DocumentFormat {
+  DOCX
+  PDF
+  HTML
 }
 
 model LetterTemplate {
@@ -285,6 +292,79 @@ model LetterTemplate {
   LetterType   LetterType @relation(fields: [letterTypeId], references: [id])
 
   @@map("letter_template")
+}
+
+// 🔴 TAMBAHAN: Model untuk template dokumen Word/PDF
+model DocumentTemplate {
+  id           String         @id @default(cuid())
+  name         String
+  description  String?
+  templatePath String         // Path ke file template .docx
+  templateType TemplateEngine @default(HANDLEBARS)
+  version      String         @default("v1")
+  isActive     Boolean        @default(true)
+  
+  schemaDefinition  Json             // Schema untuk validasi data
+  supportedFormats  DocumentFormat[] @default([DOCX])
+  
+  letterTypeId String
+  letterType   LetterType @relation(fields: [letterTypeId], references: [id])
+  
+  // Relations
+  variables       TemplateVariable[]
+  generationLogs  DocumentGenerationLog[]
+  
+  createdAt DateTime? @default(now())
+  updatedAt DateTime? @updatedAt
+  deletedAt DateTime?
+  
+  @@unique([name, version])
+  @@index([letterTypeId])
+  @@index([isActive])
+  @@map("document_template")
+}
+
+// 🔴 TAMBAHAN: Log untuk tracking document generation
+model DocumentGenerationLog {
+  id               String         @id @default(cuid())
+  templateId       String
+  letterInstanceId String
+  generatedFormat  DocumentFormat
+  
+  fileSize         Int?
+  filePath         String?
+  status           String         @default("PENDING") // PENDING, SUCCESS, FAILED
+  errorMessage     String?
+  processingTimeMs Int?
+  
+  template       DocumentTemplate @relation(fields: [templateId], references: [id])
+  letterInstance LetterInstance   @relation(fields: [letterInstanceId], references: [id], onDelete: Cascade)
+  
+  generatedAt DateTime @default(now())
+  
+  @@index([templateId])
+  @@index([letterInstanceId])
+  @@index([status])
+  @@map("document_generation_log")
+}
+
+// 🔴 TAMBAHAN: Variabel template untuk validation
+model TemplateVariable {
+  id             String  @id @default(cuid())
+  templateId     String
+  variableName   String
+  variableType   String  @default("string") // string, number, date, boolean, array, object
+  isRequired     Boolean @default(false)
+  defaultValue   String?
+  description    String?
+  validationRules Json?  // JSON schema untuk validasi nilai
+  
+  template DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime? @default(now())
+  
+  @@unique([templateId, variableName])
+  @@map("template_variable")
 }
 
 enum LetterStatus {
@@ -317,6 +397,7 @@ model LetterInstance {
   history  LetterHistory[]
   versions LetterVersion[]
   notifications Notification[] // 🔴 TAMBAHAN: Reverse relation
+  generationLogs DocumentGenerationLog[] // 🔴 TAMBAHAN: Document generation logs
 
   letterTypeId String
   letterType   LetterType @relation(fields: [letterTypeId], references: [id])
