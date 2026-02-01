@@ -1,5 +1,6 @@
 import { Elysia, t } from "elysia";
 import { Prisma } from "../../db/index.js";
+import { pdfConversionService } from "../../services/pdf/PdfConversionService.js";
 import { SuratRekomendasiTemplateService } from "../../services/template/index.js";
 import { writeFileSync } from "fs";
 import { join } from "path";
@@ -744,6 +745,18 @@ export const templatesRoute = new Elysia({ prefix: "/templates" })
                     };
                 }
 
+                // Get letter instance data for filename
+                const letterInstance = await prisma.letterInstance.findUnique({
+                    where: { id: letterInstanceId },
+                    include: {
+                        createdBy: {
+                            include: {
+                                mahasiswa: true,
+                            },
+                        },
+                    },
+                });
+
                 const fs = require("fs");
                 const fullPath = join(process.cwd(), log.filePath);
 
@@ -758,12 +771,35 @@ export const templatesRoute = new Elysia({ prefix: "/templates" })
                 const fileBuffer = fs.readFileSync(fullPath);
                 const mimeType =
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-                const filename = `surat-rekomendasi-${letterInstanceId}.docx`;
+
+                // Generate formal filename: surat-rekomendasi_{nama}_{nim}_{beasiswa}.docx
+                const studentName =
+                    letterInstance?.createdBy?.name || "unknown";
+                const nim =
+                    letterInstance?.createdBy?.mahasiswa?.nim || "unknown";
+                const scholarshipName =
+                    letterInstance?.scholarshipName ||
+                    (letterInstance?.values as any)?.namaBeasiswa ||
+                    "beasiswa";
+
+                // Sanitize filename: remove special chars, replace spaces with underscores
+                const sanitize = (str: string) =>
+                    str
+                        .toLowerCase()
+                        .replace(/[^a-z0-9\s]/gi, "")
+                        .replace(/\s+/g, "_")
+                        .substring(0, 50); // Limit length
+
+                const filename = `surat-rekomendasi_${sanitize(studentName)}_${sanitize(nim)}_${sanitize(scholarshipName)}.docx`;
 
                 set.headers = {
                     "Content-Type": mimeType,
                     "Content-Disposition": `attachment; filename="${filename}"`,
                     "Content-Length": fileBuffer.length.toString(),
+                    // Allow CORS for frontend filename extraction
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Expose-Headers":
+                        "Content-Disposition, Content-Length",
                 };
 
                 return fileBuffer;
@@ -792,6 +828,10 @@ export const templatesRoute = new Elysia({ prefix: "/templates" })
         "/letter/:letterInstanceId/preview",
         async ({ params: { letterInstanceId }, set }) => {
             try {
+                console.log(
+                    `📄 [preview] Fetching preview for: ${letterInstanceId}`,
+                );
+
                 // Find latest generation log for this letter instance
                 const log = await prisma.documentGenerationLog.findFirst({
                     where: { letterInstanceId },
@@ -799,6 +839,9 @@ export const templatesRoute = new Elysia({ prefix: "/templates" })
                 });
 
                 if (!log || !log.filePath) {
+                    console.log(
+                        `❌ [preview] No log found for: ${letterInstanceId}`,
+                    );
                     set.status = 404;
                     return {
                         success: false,
@@ -806,10 +849,29 @@ export const templatesRoute = new Elysia({ prefix: "/templates" })
                     };
                 }
 
+                console.log(
+                    `📁 [preview] Found log, file path: ${log.filePath}`,
+                );
+
+                // Get letter instance data for filename
+                const letterInstance = await prisma.letterInstance.findUnique({
+                    where: { id: letterInstanceId },
+                    include: {
+                        createdBy: {
+                            include: {
+                                mahasiswa: true,
+                            },
+                        },
+                    },
+                });
+
                 const fs = require("fs");
                 const fullPath = join(process.cwd(), log.filePath);
 
                 if (!fs.existsSync(fullPath)) {
+                    console.log(
+                        `❌ [preview] File not found on disk: ${fullPath}`,
+                    );
                     set.status = 404;
                     return {
                         success: false,
@@ -818,9 +880,32 @@ export const templatesRoute = new Elysia({ prefix: "/templates" })
                 }
 
                 const fileBuffer = fs.readFileSync(fullPath);
+                console.log(
+                    `✅ [preview] File loaded, size: ${fileBuffer.length} bytes`,
+                );
+
                 const mimeType =
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-                const filename = `surat-rekomendasi-${letterInstanceId}.docx`;
+
+                // Generate formal filename: surat-rekomendasi_{nama}_{nim}_{beasiswa}.docx
+                const studentName =
+                    letterInstance?.createdBy?.name || "unknown";
+                const nim =
+                    letterInstance?.createdBy?.mahasiswa?.nim || "unknown";
+                const scholarshipName =
+                    letterInstance?.scholarshipName ||
+                    (letterInstance?.values as any)?.namaBeasiswa ||
+                    "beasiswa";
+
+                // Sanitize filename: remove special chars, replace spaces with underscores
+                const sanitize = (str: string) =>
+                    str
+                        .toLowerCase()
+                        .replace(/[^a-z0-9\s]/gi, "")
+                        .replace(/\s+/g, "_")
+                        .substring(0, 50);
+
+                const filename = `surat-rekomendasi_${sanitize(studentName)}_${sanitize(nim)}_${sanitize(scholarshipName)}.docx`;
 
                 // Use inline disposition for preview (not download)
                 set.headers = {
@@ -835,7 +920,10 @@ export const templatesRoute = new Elysia({ prefix: "/templates" })
 
                 return fileBuffer;
             } catch (error: any) {
-                console.error("Error fetching document for preview:", error);
+                console.error(
+                    "❌ [preview] Error fetching document for preview:",
+                    error,
+                );
                 set.status = 500;
                 return {
                     success: false,
@@ -895,6 +983,108 @@ export const templatesRoute = new Elysia({ prefix: "/templates" })
                 };
             } catch (error: any) {
                 console.error("Error checking preview status:", error);
+                return {
+                    success: false,
+                    error: error.message,
+                };
+            }
+        },
+        {
+            params: t.Object({
+                letterInstanceId: t.String(),
+            }),
+        },
+    )
+
+    // 🔴 Get PDF for a letter instance (converts from DOCX)
+    .get(
+        "/letter/:letterInstanceId/pdf",
+        async ({ params: { letterInstanceId }, set }) => {
+            try {
+                // Find latest generation log
+                const log = await prisma.documentGenerationLog.findFirst({
+                    where: { letterInstanceId },
+                    orderBy: { generatedAt: "desc" },
+                });
+
+                if (!log || !log.filePath) {
+                    set.status = 404;
+                    return {
+                        success: false,
+                        error: "Document not found. It may still be generating.",
+                    };
+                }
+
+                const fs = require("fs");
+                const fullPath = join(process.cwd(), log.filePath);
+
+                if (!fs.existsSync(fullPath)) {
+                    set.status = 404;
+                    return {
+                        success: false,
+                        error: "File not found on disk",
+                    };
+                }
+
+                // Check if PDF conversion is available
+                if (!pdfConversionService.isAvailable()) {
+                    set.status = 503;
+                    return {
+                        success: false,
+                        error: "PDF conversion service is not available (LibreOffice not found)",
+                    };
+                }
+
+                // Convert to PDF
+                const pdfPath =
+                    await pdfConversionService.getPdfForDocx(fullPath);
+
+                const fileBuffer = fs.readFileSync(pdfPath);
+
+                // Get letter instance data for filename
+                const letterInstance = await prisma.letterInstance.findUnique({
+                    where: { id: letterInstanceId },
+                    include: {
+                        createdBy: {
+                            include: {
+                                mahasiswa: true,
+                            },
+                        },
+                    },
+                });
+
+                // Generate formal filename
+                const studentName =
+                    letterInstance?.createdBy?.name || "unknown";
+                const nim =
+                    letterInstance?.createdBy?.mahasiswa?.nim || "unknown";
+                const scholarshipName =
+                    letterInstance?.scholarshipName ||
+                    (letterInstance?.values as any)?.namaBeasiswa ||
+                    "beasiswa";
+
+                const sanitize = (str: string) =>
+                    str
+                        .toLowerCase()
+                        .replace(/[^a-z0-9\s]/gi, "")
+                        .replace(/\s+/g, "_")
+                        .substring(0, 50);
+
+                const filename = `surat-rekomendasi_${sanitize(studentName)}_${sanitize(nim)}_${sanitize(scholarshipName)}.pdf`;
+
+                set.headers = {
+                    "Content-Type": "application/pdf",
+                    "Content-Disposition": `inline; filename="${filename}"`,
+                    "Content-Length": fileBuffer.length.toString(),
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Expose-Headers":
+                        "Content-Disposition, Content-Length",
+                };
+
+                return fileBuffer;
+            } catch (error: any) {
+                console.error("Error generating PDF:", error);
+                set.status = 500;
                 return {
                     success: false,
                     error: error.message,
@@ -979,17 +1169,20 @@ export const templatesRoute = new Elysia({ prefix: "/templates" })
                     });
 
                     if (wd1Users.length > 0) {
-                        const wd1Signature =
-                            await prisma.userSignature.findFirst({
-                                where: {
-                                    userId: wd1Users[0].userId,
-                                    isDefault: true,
-                                },
-                                orderBy: { createdAt: "desc" },
-                            });
+                        const firstWd1User = wd1Users[0];
+                        if (firstWd1User) {
+                            const wd1Signature =
+                                await prisma.userSignature.findFirst({
+                                    where: {
+                                        userId: firstWd1User.userId,
+                                        isDefault: true,
+                                    },
+                                    orderBy: { createdAt: "desc" },
+                                });
 
-                        if (wd1Signature) {
-                            signatureUrl = wd1Signature.url;
+                            if (wd1Signature) {
+                                signatureUrl = wd1Signature.url;
+                            }
                         }
                     }
                 }
