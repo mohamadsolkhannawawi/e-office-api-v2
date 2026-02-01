@@ -7,6 +7,40 @@ import sharp from "sharp";
 // @ts-ignore - no types for this module
 import ImageModule from "docxtemplater-image-module-free";
 
+/**
+ * Image size configuration (in pixels)
+ * Adjust these values to change the size of generated images in documents
+ *
+ * NOTE: Higher resolution = better quality but larger file size
+ * The images will be scaled proportionally to fit within these dimensions
+ *
+ * Conversion: 1 cm ≈ 37.8 pixels at 96 DPI
+ * For print quality (300 DPI): 1 cm ≈ 118 pixels
+ */
+export const IMAGE_SIZE_CONFIG = {
+    // Signature: 6cm x 3cm (wider than tall, typical signature ratio)
+    // Using print quality resolution
+    signature: {
+        width: 227, // ~6cm at 96 DPI
+        height: 113, // ~3cm at 96 DPI
+    },
+    // Stamp: 4cm x 4cm (square)
+    stamp: {
+        width: 151, // ~4cm at 96 DPI
+        height: 151, // ~4cm at 96 DPI
+    },
+    // QR Code: 3cm x 3cm (square, needs to be readable)
+    qrCode: {
+        width: 113, // ~3cm at 96 DPI
+        height: 113, // ~3cm at 96 DPI
+    },
+    // Default for unknown images
+    default: {
+        width: 150,
+        height: 150,
+    },
+};
+
 export interface TemplateData {
     // Kop surat
     kop_universitas?: string;
@@ -64,13 +98,15 @@ export class DocumentTemplateService {
 
     /**
      * Generate QR Code for document verification
+     * Using high resolution for better quality when inserted into documents
      */
     async generateQRCode(data: string): Promise<Buffer> {
         try {
             const qrBuffer = await QRCode.toBuffer(data, {
                 type: "png",
                 margin: 1,
-                width: 200,
+                width: 400, // High resolution for better quality
+                errorCorrectionLevel: "M", // Medium error correction
                 color: {
                     dark: "#000000",
                     light: "#FFFFFF",
@@ -84,7 +120,8 @@ export class DocumentTemplateService {
     }
 
     /**
-     * Process image for template insertion
+     * Process image for template insertion (from file path)
+     * Uses fit: "inside" to scale proportionally without cropping
      */
     async processImage(
         imagePath: string,
@@ -94,16 +131,48 @@ export class DocumentTemplateService {
         try {
             const processedImage = await sharp(imagePath)
                 .resize(maxWidth, maxHeight, {
-                    fit: "inside",
-                    withoutEnlargement: true,
+                    fit: "inside", // Scale to fit inside bounds, no cropping
+                    withoutEnlargement: false, // Allow enlargement if needed
                 })
-                .png()
+                .png({ quality: 100, compressionLevel: 9 }) // Max lossless compression
                 .toBuffer();
 
             return processedImage;
         } catch (error) {
             console.error("Error processing image:", error);
             throw new Error("Failed to process image");
+        }
+    }
+
+    /**
+     * Process image from Buffer or base64 string
+     * Resizes the image to fit within maxWidth x maxHeight while maintaining aspect ratio
+     * Uses fit: "inside" to ensure no cropping occurs
+     */
+    async processImageBuffer(
+        input: Buffer | string,
+        maxWidth: number,
+        maxHeight: number,
+    ): Promise<Buffer> {
+        try {
+            // If input is base64 string, convert to Buffer
+            const inputBuffer =
+                typeof input === "string"
+                    ? Buffer.from(input, "base64")
+                    : input;
+
+            const processedImage = await sharp(inputBuffer)
+                .resize(maxWidth, maxHeight, {
+                    fit: "inside", // Scale to fit inside bounds, no cropping
+                    withoutEnlargement: false, // Allow enlargement if needed
+                })
+                .png({ quality: 100, compressionLevel: 9 }) // Max lossless compression
+                .toBuffer();
+
+            return processedImage;
+        } catch (error) {
+            console.error("Error processing image buffer:", error);
+            throw new Error("Failed to process image buffer");
         }
     }
 
@@ -275,17 +344,29 @@ export class DocumentTemplateService {
                     if (!tagValue || tagValue.length === 0) {
                         return [1, 1]; // Effectively invisible
                     }
-                    // Define sizes for different image types
+                    // Use configurable sizes from IMAGE_SIZE_CONFIG
                     if (tagName === "signature_image") {
-                        return [150, 75]; // width x height in pixels
+                        return [
+                            IMAGE_SIZE_CONFIG.signature.width,
+                            IMAGE_SIZE_CONFIG.signature.height,
+                        ];
                     }
                     if (tagName === "stamp_image") {
-                        return [100, 100];
+                        return [
+                            IMAGE_SIZE_CONFIG.stamp.width,
+                            IMAGE_SIZE_CONFIG.stamp.height,
+                        ];
                     }
                     if (tagName === "qr_code") {
-                        return [80, 80];
+                        return [
+                            IMAGE_SIZE_CONFIG.qrCode.width,
+                            IMAGE_SIZE_CONFIG.qrCode.height,
+                        ];
                     }
-                    return [100, 100]; // default size
+                    return [
+                        IMAGE_SIZE_CONFIG.default.width,
+                        IMAGE_SIZE_CONFIG.default.height,
+                    ];
                 },
             };
 
@@ -313,15 +394,12 @@ export class DocumentTemplateService {
                 },
             });
 
-            // Set template data
-            doc.setData(templateData);
-
             console.log("[DEBUG] Template data for rendering:", templateData);
 
             try {
-                // Render document
+                // Render document with data (new API - replaces deprecated setData + render)
                 console.log("Rendering document...");
-                doc.render();
+                doc.render(templateData);
                 console.log("Document rendered successfully");
             } catch (error: any) {
                 console.error("Error rendering document:", error);
@@ -411,39 +489,51 @@ export class DocumentTemplateService {
 
         // Process digital features
         if (digitalFeatures) {
+            // Process QR Code
             if (digitalFeatures.qrCodeData) {
                 const qrBuffer = await this.generateQRCode(
                     digitalFeatures.qrCodeData,
                 );
-                // Convert to base64 for template insertion
-                processedData.qr_code = qrBuffer.toString("base64");
+                // Resize QR code to configured size
+                const resizedQr = await this.processImageBuffer(
+                    qrBuffer,
+                    IMAGE_SIZE_CONFIG.qrCode.width,
+                    IMAGE_SIZE_CONFIG.qrCode.height,
+                );
+                processedData.qr_code = resizedQr.toString("base64");
             }
 
             // Handle signature - either from file path or direct base64
             if (digitalFeatures.signatureImageBase64) {
-                processedData.signature_image =
-                    digitalFeatures.signatureImageBase64;
+                // Resize base64 signature to configured size
+                const resizedSig = await this.processImageBuffer(
+                    digitalFeatures.signatureImageBase64,
+                    IMAGE_SIZE_CONFIG.signature.width,
+                    IMAGE_SIZE_CONFIG.signature.height,
+                );
+                processedData.signature_image = resizedSig.toString("base64");
             } else if (
                 digitalFeatures.signatureImagePath &&
                 existsSync(digitalFeatures.signatureImagePath)
             ) {
                 const signatureBuffer = await this.processImage(
                     digitalFeatures.signatureImagePath,
-                    150,
-                    75,
+                    IMAGE_SIZE_CONFIG.signature.width,
+                    IMAGE_SIZE_CONFIG.signature.height,
                 );
                 processedData.signature_image =
                     signatureBuffer.toString("base64");
             }
 
+            // Handle stamp image
             if (
                 digitalFeatures.stampImagePath &&
                 existsSync(digitalFeatures.stampImagePath)
             ) {
                 const stampBuffer = await this.processImage(
                     digitalFeatures.stampImagePath,
-                    100,
-                    100,
+                    IMAGE_SIZE_CONFIG.stamp.width,
+                    IMAGE_SIZE_CONFIG.stamp.height,
                 );
                 processedData.stamp_image = stampBuffer.toString("base64");
             }
