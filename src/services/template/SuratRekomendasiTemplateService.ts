@@ -78,12 +78,24 @@ export class SuratRekomendasiTemplateService {
             data;
         const formData = applicationData.formData || applicationData;
 
-        // Get current academic year
-        const currentYear = new Date().getFullYear();
+        // Get current academic year following Indonesian rules:
+        // - Semester Ganjil: July - December -> tahun_saat_ini/tahun_depan
+        // - Semester Genap: January - June -> tahun_kemarin/tahun_saat_ini
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth() + 1; // 1-12
+
+        // If month is 1-6 (Jan-June, Semester Genap), use previous_year/current_year
+        // If month is 7-12 (Jul-Dec, Semester Ganjil), use current_year/next_year
+        const academicYearStart =
+            currentMonth <= 6 ? currentYear - 1 : currentYear;
+        const academicYearEnd = academicYearStart + 1;
+        const calculatedAcademicYear = `${academicYearStart}/${academicYearEnd}`;
+
         const academicYear =
             formData.tahunAkademik ||
             formData.tahun_akademik ||
-            `${currentYear}/${currentYear + 1}`;
+            calculatedAcademicYear;
 
         // Format tanggal lahir - support both formats
         const rawTanggalLahir = formData.tanggalLahir || formData.tanggal_lahir;
@@ -95,32 +107,27 @@ export class SuratRekomendasiTemplateService {
               })
             : "";
 
-        // Format tanggal terbit
+        // Format tanggal terbit - only show when actually published
         const tanggalTerbit = publishedAt
             ? publishedAt.toLocaleDateString("id-ID", {
                   day: "numeric",
                   month: "long",
                   year: "numeric",
               })
-            : new Date().toLocaleDateString("id-ID", {
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-              });
+            : ""; // Empty when not published yet
 
-        // Determine keperluan - support both formats
-        let keperluan = "Pengajuan Beasiswa";
-        const jenisBeasiswa = formData.jenisBeasiswa || formData.jenis_beasiswa;
-        const namaBeasiswa = formData.namaBeasiswa || formData.nama_beasiswa;
-        if (jenisBeasiswa) {
-            keperluan = `Pengajuan Beasiswa ${jenisBeasiswa}`;
-        } else if (namaBeasiswa) {
-            keperluan = `Pengajuan ${namaBeasiswa}`;
-        }
+        // Determine keperluan - just the scholarship name
+        // Template already has "Pengajuan Beasiswa {{keperluan}}" so we only need the name
+        const keperluan =
+            formData.namaBeasiswa ||
+            formData.nama_beasiswa ||
+            formData.jenisBeasiswa ||
+            formData.jenis_beasiswa ||
+            "";
 
         const templateData: TemplateData = {
             // Nomor surat
-            nomor_surat: letterNumber || "/UN7.F8.1/KM/……/20…",
+            nomor_surat: letterNumber || "",
 
             // Data mahasiswa - support both camelCase and snake_case
             nama_lengkap:
@@ -144,7 +151,7 @@ export class SuratRekomendasiTemplateService {
             ips: formData.ips?.toString() || "",
             keperluan: keperluan,
 
-            // Tanggal terbit
+            // Tanggal terbit - empty before published
             tanggal_terbit: tanggalTerbit,
 
             // Penandatangan (dari leadership config atau default)
