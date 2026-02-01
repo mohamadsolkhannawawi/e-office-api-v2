@@ -2,6 +2,9 @@ import { ApplicationService } from "../services/application.service.ts";
 import { ROLE_STEP_MAP } from "../constants.ts";
 import { MinioService } from "../../../shared/services/minio.service.ts";
 import { Prisma } from "../../../db/index.ts";
+import { SuratRekomendasiTemplateService } from "../../../services/template/SuratRekomendasiTemplateService.js";
+import { writeFileSync } from "fs";
+import { join } from "path";
 import {
     getQRCodeImageUrl,
     getQRCodeUrl,
@@ -187,6 +190,29 @@ export class ApplicationController {
                     createdById: application.createdById,
                 },
             );
+
+            // 🔴 AUTO-GENERATE DOCX TEMPLATE when application is submitted
+            // This ensures Word document is available for preview immediately
+            try {
+                console.log(
+                    "📄 [createApplication] Triggering auto-generate DOCX template...",
+                );
+                ApplicationController.autoGenerateTemplate(
+                    application.id,
+                    application.id,
+                ).catch((err) => {
+                    console.error(
+                        "❌ [createApplication] Background template generation failed:",
+                        err,
+                    );
+                });
+            } catch (genError) {
+                console.error(
+                    "❌ [createApplication] Failed to trigger template generation:",
+                    genError,
+                );
+            }
+
             return {
                 success: true,
                 data: application,
@@ -404,6 +430,28 @@ export class ApplicationController {
                                   stack: notifyError.stack,
                               }
                             : notifyError,
+                    );
+                }
+
+                // 🔴 AUTO-GENERATE DOCX TEMPLATE when application is submitted/resubmitted
+                // This ensures Word document is available for preview immediately
+                try {
+                    console.log(
+                        "📄 [updateApplication] Triggering auto-generate DOCX template...",
+                    );
+                    ApplicationController.autoGenerateTemplate(
+                        applicationId,
+                        applicationId,
+                    ).catch((err) => {
+                        console.error(
+                            "❌ [updateApplication] Background template generation failed:",
+                            err,
+                        );
+                    });
+                } catch (genError) {
+                    console.error(
+                        "❌ [updateApplication] Failed to trigger template generation:",
+                        genError,
                     );
                 }
             }
@@ -1080,6 +1128,28 @@ export class ApplicationController {
                 },
             );
 
+            // 🔴 AUTO-GENERATE WORD TEMPLATE DOCUMENT
+            // This ensures Word document is always available for download/preview
+            // at each stage, similar to how HTML preview works
+            try {
+                // Run in background (don't wait for completion)
+                ApplicationController.autoGenerateTemplate(
+                    applicationId,
+                    applicationId,
+                ).catch((err) => {
+                    console.error(
+                        "Background template generation failed:",
+                        err,
+                    );
+                });
+            } catch (genError) {
+                // Log but don't fail the request
+                console.error(
+                    "Failed to trigger template generation:",
+                    genError,
+                );
+            }
+
             // Trigger notifications based on action
             try {
                 const userRoles = Array.isArray(user?.roles)
@@ -1355,6 +1425,218 @@ export class ApplicationController {
 
             set.status = 500;
             return { error: "Failed to delete application" };
+        }
+    }
+
+    /**
+     * Auto-generate Word document template for letter instance
+     * Called after each verification/approval action and when student submits
+     */
+    static async autoGenerateTemplate(
+        letterInstanceId: string,
+        applicationId: string,
+        letterTypeId: string = "srb-type-id",
+    ): Promise<void> {
+        try {
+            console.log(
+                `📄 [autoGenerateTemplate] Starting generation for: ${letterInstanceId}`,
+            );
+
+            // Get latest generation log if exists
+            const existingLog = await db.documentGenerationLog.findFirst({
+                where: { letterInstanceId },
+                orderBy: { generatedAt: "desc" },
+            });
+
+            // Get letter instance with all needed data
+            const letterInstance = await db.letterInstance.findUnique({
+                where: { id: letterInstanceId },
+                include: {
+                    createdBy: {
+                        include: {
+                            mahasiswa: {
+                                include: {
+                                    departemen: true,
+                                    programStudi: true,
+                                },
+                            },
+                            pegawai: true,
+                        },
+                    },
+                    stamp: true,
+                },
+            });
+
+            if (!letterInstance) {
+                console.warn(
+                    `⚠️ [autoGenerateTemplate] Letter instance not found: ${letterInstanceId}`,
+                );
+                return;
+            }
+
+            // Get template
+            const template = await db.documentTemplate.findFirst({
+                where: {
+                    isActive: true,
+                    letterTypeId,
+                },
+            });
+
+            if (!template) {
+                console.warn(
+                    `⚠️ [autoGenerateTemplate] Template not found for type: ${letterTypeId}`,
+                );
+                return;
+            }
+
+            // Get leadership config (WAKIL_DEKAN_1)
+            const leadershipConfig = await db.letterConfig.findUnique({
+                where: { key: "WAKIL_DEKAN_1" },
+            });
+
+            // Get WD1 signature - this should be from Wakil Dekan 1's signature, not the applicant
+            // Check if WD1 has signed (currentStep >= 4 means WD1 has approved)
+            let signatureUrl = undefined;
+            const letterValues = (letterInstance.values as any) || {};
+
+            // Check if WD1 signature is stored in values (added during WD1 approval)
+            if (letterValues.wd1_signature) {
+                signatureUrl = letterValues.wd1_signature;
+                console.log(
+                    `✅ [autoGenerateTemplate] WD1 signature found in values: ${signatureUrl}`,
+                );
+            } else if (
+                letterInstance.currentStep &&
+                letterInstance.currentStep >= 4
+            ) {
+                // If we're at step 4+ but no signature in values, try to get from WD1 user
+                // Find users with WAKIL_DEKAN_1 role
+                const wd1Users = await db.userRole.findMany({
+                    where: { role: { name: "WAKIL_DEKAN_1" } },
+                    include: { user: true },
+                });
+
+                if (wd1Users.length > 0) {
+                    // Get the first WD1 user's default signature
+                    const wd1Signature = await db.userSignature.findFirst({
+                        where: {
+                            userId: wd1Users[0].userId,
+                            isDefault: true,
+                        },
+                        orderBy: { createdAt: "desc" },
+                    });
+
+                    if (wd1Signature) {
+                        signatureUrl = wd1Signature.url;
+                        console.log(
+                            `✅ [autoGenerateTemplate] WD1 signature from user: ${signatureUrl}`,
+                        );
+                    }
+                }
+            }
+
+            // Get stamp URL from letterInstance
+            let stampUrl = undefined;
+            if (letterInstance.stamp) {
+                stampUrl = letterInstance.stamp.url;
+                console.log(
+                    `✅ [autoGenerateTemplate] Stamp found: ${stampUrl}`,
+                );
+            }
+
+            // Prepare template data
+            const mahasiswa = letterInstance.createdBy?.mahasiswa;
+            const templateData = {
+                letterInstanceId: letterInstance.id,
+                applicationData: {
+                    ...letterValues,
+                    // Include mahasiswa data if available
+                    namaLengkap:
+                        letterInstance.createdBy?.name ||
+                        letterValues.namaLengkap,
+                    nim: mahasiswa?.nim || letterValues.nim,
+                    tempatLahir:
+                        mahasiswa?.tempatLahir || letterValues.tempatLahir,
+                    tanggalLahir:
+                        mahasiswa?.tanggalLahir || letterValues.tanggalLahir,
+                    noHp: mahasiswa?.noHp || letterValues.noHp,
+                    semester: mahasiswa?.semester || letterValues.semester,
+                    ipk: mahasiswa?.ipk || letterValues.ipk,
+                    ips: mahasiswa?.ips || letterValues.ips,
+                    // Include departemen and program studi from database
+                    departemen:
+                        mahasiswa?.departemen?.name ||
+                        letterValues.departemen ||
+                        letterValues.jurusan,
+                    programStudi:
+                        mahasiswa?.programStudi?.name ||
+                        letterValues.programStudi ||
+                        letterValues.prodi,
+                },
+                letterNumber: letterInstance.letterNumber || undefined,
+                signatureUrl: signatureUrl,
+                stampUrl: stampUrl,
+                publishedAt: letterInstance.publishedAt || undefined,
+                leadershipConfig: leadershipConfig
+                    ? {
+                          name: (leadershipConfig.value as any)?.name || "",
+                          nip: (leadershipConfig.value as any)?.nip || "",
+                          jabatan:
+                              (leadershipConfig.value as any)?.jabatan || "",
+                      }
+                    : undefined,
+            };
+
+            // Initialize template service
+            const templateService = new SuratRekomendasiTemplateService();
+
+            // Generate document
+            const documentBuffer =
+                await templateService.generateSuratRekomendasi(templateData);
+
+            // Create new generation log entry (replace old one if exists)
+            const filename = `surat-rekomendasi-${letterInstance.id}-${Date.now()}.docx`;
+            const filePath = join("uploads", "generated", filename);
+
+            // Ensure directory exists
+            const fs = require("fs");
+            const uploadDir = join(process.cwd(), "uploads", "generated");
+            if (!fs.existsSync(uploadDir)) {
+                fs.mkdirSync(uploadDir, { recursive: true });
+            }
+
+            // Write file
+            writeFileSync(join(process.cwd(), filePath), documentBuffer);
+
+            // Delete old generation log if exists
+            if (existingLog) {
+                await db.documentGenerationLog.delete({
+                    where: { id: existingLog.id },
+                });
+            }
+
+            // Create new generation log
+            await db.documentGenerationLog.create({
+                data: {
+                    templateId: template.id,
+                    letterInstanceId: letterInstance.id,
+                    generatedFormat: "DOCX",
+                    status: "SUCCESS",
+                    filePath,
+                    fileSize: documentBuffer.length,
+                    processingTimeMs: 0,
+                },
+            });
+
+            console.log(
+                `✅ [autoGenerateTemplate] Document generated: ${letterInstanceId}`,
+            );
+        } catch (error) {
+            console.error(
+                `❌ [autoGenerateTemplate] Failed to generate template for ${letterInstanceId}:`,
+                error instanceof Error ? error.message : error,
+            );
+            // Don't throw - this is a background operation
         }
     }
 }
