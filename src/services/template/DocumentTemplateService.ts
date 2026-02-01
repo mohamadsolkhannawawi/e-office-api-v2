@@ -240,9 +240,13 @@ export class DocumentTemplateService {
             const templateBuffer = this.loadTemplate(templateName);
             const zip = new PizZip(templateBuffer);
 
-            // NOTE: We no longer call normalizeTemplateBraces() here
-            // The template is correct as-is and docxtemplater handles XML splitting automatically
-            // Calling the normalizer was actually breaking the template!
+            // NOTE: Template normalization is DISABLED
+            // The normalizer breaks templates when tags are split across XML elements
+            // (e.g., {{program</w:t></w:r><w:r><w:t>_studi}})
+            // Instead, the DOCX template must be manually updated to:
+            // 1. Use {{%signature_image}} format for images (not {%signature_image})
+            // 2. Ensure all variable braces are complete {{variable}}
+            // this.normalizeTemplateBraces(zip);
 
             // Prepare data with defaults (includes processing images)
             console.log("Preparing template data...");
@@ -267,6 +271,10 @@ export class DocumentTemplateService {
                     );
                 },
                 getSize: (img: Buffer, tagValue: string, tagName: string) => {
+                    // If no image data, return minimal size so it's invisible
+                    if (!tagValue || tagValue.length === 0) {
+                        return [1, 1]; // Effectively invisible
+                    }
                     // Define sizes for different image types
                     if (tagName === "signature_image") {
                         return [150, 75]; // width x height in pixels
@@ -382,14 +390,17 @@ export class DocumentTemplateService {
             kop_website: "Laman: www.fsm.undip.ac.id",
             kop_email: "Pos-el: fsm(at)undip.ac.id",
             judul_surat: "SURAT-REKOMENDASI",
-            nomor_surat: data.nomor_surat || "/UN7.F8.1/KM/……/20…",
+            // Don't use placeholder for nomor_surat - empty if not assigned
+            nomor_surat: data.nomor_surat || "",
             tahun_akademik:
                 data.tahun_akademik || `${currentYear}/${currentYear + 1}`,
-            tanggal_terbit: data.tanggal_terbit || currentDate,
+            // Don't use current date for tanggal_terbit - empty if not published
+            tanggal_terbit: data.tanggal_terbit || "",
             jabatan_penandatangan:
                 data.jabatan_penandatangan ||
                 "Wakil Dekan Akademik dan Kemahasiswaan",
-            keperluan: data.keperluan || "Pengajuan Beasiswa",
+            // keperluan is just the scholarship name (template has "Pengajuan Beasiswa" prefix)
+            keperluan: data.keperluan || "",
         };
 
         // Merge data with defaults
