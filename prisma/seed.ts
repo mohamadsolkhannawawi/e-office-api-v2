@@ -353,6 +353,188 @@ async function main() {
     });
     console.log("Letter Template (v1) created.");
 
+    // 6.5. 🔴 TAMBAHAN: Create Document Template for Surat Rekomendasi Beasiswa
+    const srbDocumentTemplate = await prisma.documentTemplate.create({
+        data: {
+            name: "Surat Rekomendasi Beasiswa",
+            description:
+                "Template Word untuk surat rekomendasi beasiswa dengan sistem variable substitution",
+            templatePath:
+                "surat-rekomendasi-beasiswa/surat-rekomendasi-beasiswa-template-v1.docx",
+            templateType: "HANDLEBARS",
+            version: "v1",
+            isActive: true,
+            supportedFormats: ["DOCX", "PDF"],
+            letterTypeId: srbType.id,
+            schemaDefinition: {
+                title: "Surat Rekomendasi Beasiswa Template Schema",
+                type: "object",
+                properties: {
+                    kop_universitas: {
+                        type: "string",
+                        title: "Nama Universitas",
+                        default:
+                            "KEMENTERIAN PENDIDIKAN TINGGI, SAINS, DAN TEKNOLOGI\\nUNIVERSITAS DIPONEGORO",
+                    },
+                    kop_fakultas: {
+                        type: "string",
+                        title: "Nama Fakultas",
+                        default: "FAKULTAS SAINS DAN MATEMATIKA",
+                    },
+                    nama_lengkap: { type: "string", title: "Nama Lengkap" },
+                    nim: { type: "string", title: "NIM" },
+                    tempat_lahir: { type: "string", title: "Tempat Lahir" },
+                    tanggal_lahir: {
+                        type: "string",
+                        title: "Tanggal Lahir",
+                        format: "date",
+                    },
+                    no_hp: { type: "string", title: "Nomor HP" },
+                    tahun_akademik: {
+                        type: "string",
+                        title: "Tahun Akademik",
+                        pattern: "^\\d{4}/\\d{4}$",
+                    },
+                    program_studi: { type: "string", title: "Program Studi" },
+                    semester: { type: "string", title: "Semester" },
+                    ipk: { type: "string", title: "IPK" },
+                    ips: { type: "string", title: "IPS" },
+                    keperluan: {
+                        type: "string",
+                        title: "Keperluan",
+                        default: "Pengajuan Beasiswa",
+                    },
+                    nama_penandatangan: {
+                        type: "string",
+                        title: "Nama Penandatangan",
+                    },
+                    nip_penandatangan: {
+                        type: "string",
+                        title: "NIP Penandatangan",
+                    },
+                    nomor_surat: { type: "string", title: "Nomor Surat" },
+                },
+                required: [
+                    "nama_lengkap",
+                    "nim",
+                    "tempat_lahir",
+                    "tanggal_lahir",
+                    "no_hp",
+                    "tahun_akademik",
+                    "program_studi",
+                    "semester",
+                    "ipk",
+                    "ips",
+                    "keperluan",
+                    "nama_penandatangan",
+                    "nip_penandatangan",
+                ],
+            },
+        },
+    });
+
+    // 6.6. 🔴 TAMBAHAN: Create Template Variables
+    const templateVariables = [
+        {
+            name: "nama_lengkap",
+            type: "string",
+            required: true,
+            description: "Nama lengkap mahasiswa pemohon",
+        },
+        {
+            name: "nim",
+            type: "string",
+            required: true,
+            description: "Nomor Induk Mahasiswa",
+        },
+        {
+            name: "tempat_lahir",
+            type: "string",
+            required: true,
+            description: "Tempat lahir mahasiswa",
+        },
+        {
+            name: "tanggal_lahir",
+            type: "date",
+            required: true,
+            description: "Tanggal lahir mahasiswa",
+        },
+        {
+            name: "no_hp",
+            type: "string",
+            required: true,
+            description: "Nomor HP/telepon mahasiswa",
+        },
+        {
+            name: "program_studi",
+            type: "string",
+            required: true,
+            description: "Program studi mahasiswa",
+        },
+        {
+            name: "semester",
+            type: "string",
+            required: true,
+            description: "Semester saat ini",
+        },
+        {
+            name: "ipk",
+            type: "string",
+            required: true,
+            description: "Indeks Prestasi Kumulatif",
+        },
+        {
+            name: "ips",
+            type: "string",
+            required: true,
+            description: "Indeks Prestasi Semester",
+        },
+        {
+            name: "keperluan",
+            type: "string",
+            required: true,
+            description: "Keperluan pembuatan surat",
+        },
+        {
+            name: "nama_penandatangan",
+            type: "string",
+            required: true,
+            description: "Nama pejabat penandatangan",
+        },
+        {
+            name: "nip_penandatangan",
+            type: "string",
+            required: true,
+            description: "NIP pejabat penandatangan",
+        },
+        {
+            name: "nomor_surat",
+            type: "string",
+            required: false,
+            description: "Nomor surat resmi",
+        },
+        {
+            name: "tahun_akademik",
+            type: "string",
+            required: false,
+            description: "Tahun akademik",
+        },
+    ];
+
+    for (const variable of templateVariables) {
+        await prisma.templateVariable.create({
+            data: {
+                templateId: srbDocumentTemplate.id,
+                variableName: variable.name,
+                variableType: variable.type,
+                isRequired: variable.required,
+                description: variable.description,
+            },
+        });
+    }
+
+    console.log("Document Template and Variables created.");
+
     // 7. Seed Letter Config (Konfigurasi Dinamis)
     await prisma.letterConfig.upsert({
         where: { key: "WAKIL_DEKAN_1" },
