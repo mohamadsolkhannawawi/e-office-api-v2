@@ -98,6 +98,18 @@ const suratRekomendasiRoutes = new Elysia({
             }),
         },
     )
+    .put(
+        "/applications/:applicationId/signature",
+        ApplicationController.saveSignature,
+        {
+            params: t.Object({
+                applicationId: t.String(),
+            }),
+            body: t.Object({
+                signatureUrl: t.String(),
+            }),
+        },
+    )
     .get("/applications", ApplicationController.listApplications, {
         query: t.Optional(
             t.Object({
