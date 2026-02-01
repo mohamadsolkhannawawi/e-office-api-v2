@@ -1545,33 +1545,34 @@ export class ApplicationController {
             }
 
             // Prepare template data
+            // Use same merging strategy as getApplicationDetail:
+            // 1. Base: mahasiswa data from DB (LIVE data)
+            // 2. Spread letterValues ON TOP (so user form input overrides DB data)
+            // 3. Fixed overrides that should always come from specific sources
             const mahasiswa = letterInstance.createdBy?.mahasiswa;
             const templateData = {
                 letterInstanceId: letterInstance.id,
                 applicationData: {
+                    // 1. Base: mahasiswa data from database (LIVE)
+                    namaLengkap: letterInstance.createdBy?.name || "",
+                    email: letterInstance.createdBy?.email || "",
+                    nim: mahasiswa?.nim || "",
+                    departemen: mahasiswa?.departemen?.name || "",
+                    programStudi: mahasiswa?.programStudi?.name || "",
+                    tempatLahir: mahasiswa?.tempatLahir || "",
+                    tanggalLahir: mahasiswa?.tanggalLahir || "",
+                    noHp: mahasiswa?.noHp || "",
+                    semester: mahasiswa?.semester
+                        ? String(mahasiswa.semester)
+                        : "",
+                    ipk: mahasiswa?.ipk ? String(mahasiswa.ipk) : "",
+                    ips: mahasiswa?.ips ? String(mahasiswa.ips) : "",
+
+                    // 2. Spread letterValues ON TOP - user form overrides take precedence
                     ...letterValues,
-                    // Include mahasiswa data if available
-                    namaLengkap:
-                        letterInstance.createdBy?.name ||
-                        letterValues.namaLengkap,
-                    nim: mahasiswa?.nim || letterValues.nim,
-                    tempatLahir:
-                        mahasiswa?.tempatLahir || letterValues.tempatLahir,
-                    tanggalLahir:
-                        mahasiswa?.tanggalLahir || letterValues.tanggalLahir,
-                    noHp: mahasiswa?.noHp || letterValues.noHp,
-                    semester: mahasiswa?.semester || letterValues.semester,
-                    ipk: mahasiswa?.ipk || letterValues.ipk,
-                    ips: mahasiswa?.ips || letterValues.ips,
-                    // Include departemen and program studi from database
-                    departemen:
-                        mahasiswa?.departemen?.name ||
-                        letterValues.departemen ||
-                        letterValues.jurusan,
-                    programStudi:
-                        mahasiswa?.programStudi?.name ||
-                        letterValues.programStudi ||
-                        letterValues.prodi,
+
+                    // 3. Fixed overrides that MUST come from specific sources
+                    namaBeasiswa: letterInstance.scholarshipName,
                 },
                 letterNumber: letterInstance.letterNumber || undefined,
                 signatureUrl: signatureUrl,
