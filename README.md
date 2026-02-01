@@ -45,7 +45,25 @@ docker-compose --version # Atau 'docker compose version'
 
 **Versi yang diperlukan: Docker Desktop atau Docker Engine + Docker Compose v2**
 
+**Versi yang diperlukan: Docker Desktop atau Docker Engine + Docker Compose v2**
+
 Download dari: https://www.docker.com/products/docker-desktop/
+
+### 4. LibreOffice (Optional but Recommended)
+
+Diperlukan untuk fitur **Konversi DOCX ke PDF**. Jika tidak diinstall, API convert PDF akan mengembalikan error 503, namun fitur lain tetap berjalan.
+
+**Windows:**
+
+```powershell
+winget install TheDocumentFoundation.LibreOffice
+```
+
+**Linux (Ubuntu/Debian):**
+
+```bash
+sudo apt-get install libreoffice
+```
 
 ## 📥 Instalasi
 
