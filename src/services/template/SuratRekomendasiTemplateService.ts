@@ -194,9 +194,17 @@ export class SuratRekomendasiTemplateService {
 
         // Signature
         if (data.signatureUrl) {
-            // Check if it's a full URL or relative path
-            if (data.signatureUrl.startsWith("http")) {
-                // TODO: Download and save locally for processing
+            // Check if it's base64 encoded data (data:image/png;base64,...)
+            if (data.signatureUrl.startsWith("data:")) {
+                // Extract base64 part from data URL
+                const base64Match = data.signatureUrl.match(
+                    /^data:image\/\w+;base64,(.+)$/,
+                );
+                if (base64Match && base64Match[1]) {
+                    digitalFeatures.signatureImageBase64 = base64Match[1];
+                }
+            } else if (data.signatureUrl.startsWith("http")) {
+                // Full HTTP URL - download and save locally
                 digitalFeatures.signatureImagePath =
                     await this.downloadAndSaveImage(
                         data.signatureUrl,
