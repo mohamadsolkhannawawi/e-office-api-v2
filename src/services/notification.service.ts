@@ -360,7 +360,7 @@ export async function notifyApplicationRevisionRequested(params: {
     } = params;
 
     // Ensure the notification is sent only if the applicant is the intended recipient
-    const application = await Prisma.application.findUnique({
+    const application = await Prisma.letterInstance.findUnique({
         where: { id: applicationId },
         select: { createdById: true },
     });
