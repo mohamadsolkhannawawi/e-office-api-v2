@@ -174,8 +174,8 @@ export class SuratRekomendasiTemplateService {
     ): Promise<DigitalFeatures | undefined> {
         const digitalFeatures: DigitalFeatures = {};
 
-        // QR Code for verification
-        if (data.letterNumber) {
+        // QR Code for verification - only if letter has been published
+        if (data.letterNumber && data.publishedAt) {
             try {
                 // Get or create verification code
                 const verification = await this.getOrCreateVerification(
