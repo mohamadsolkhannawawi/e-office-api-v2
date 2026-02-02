@@ -496,6 +496,14 @@ export class ApplicationController {
                 sortOrder,
             } = query || {};
 
+            // Log date parameters for debugging
+            console.log("📅 Date Params received in controller:", {
+                startDate,
+                endDate,
+                startDateType: typeof startDate,
+                endDateType: typeof endDate,
+            });
+
             const filters: any = {
                 letterTypeId: "srb-type-id",
                 status,
