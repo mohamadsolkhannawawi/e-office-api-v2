@@ -19,7 +19,30 @@ interface CreateNotificationParams {
     message: string;
     type: NotificationType;
     entityId?: string;
-    letterInstanceId?: string; // 🔴 TAMBAHAN
+    letterInstanceId?: string;
+}
+
+/**
+ * Helper: Convert database role name to user-friendly format
+ */
+export function formatRoleName(roleName: string | null | undefined): string {
+    if (!roleName) return "Sistem";
+    
+    const roleMap: Record<string, string> = {
+        SUPERVISOR: "Supervisor Akademik",
+        MANAJER_TU: "Manajer TU",
+        WAKIL_DEKAN_1: "Wakil Dekan 1",
+        UPA: "Staff UPA",
+        MAHASISWA: "Mahasiswa",
+        // Handle lowercase variations
+        supervisor: "Supervisor Akademik",
+        manajer_tu: "Manajer TU",
+        wakil_dekan_1: "Wakil Dekan 1",
+        upa: "Staff UPA",
+        mahasiswa: "Mahasiswa",
+    };
+    
+    return roleMap[roleName] || roleName;
 }
 
 /**
@@ -133,6 +156,7 @@ export async function markAllAsRead(userId: string) {
 
 /**
  * Notify supervisors when application status changes
+ * @deprecated Use specific notification functions instead
  */
 export async function notifyApplicationStatusChange(params: {
     applicationId: string;
@@ -140,6 +164,7 @@ export async function notifyApplicationStatusChange(params: {
     scholarshipName: string;
     newStatus: string;
     actorName?: string;
+    actorRole?: string;
 }) {
     const {
         applicationId,
@@ -147,8 +172,10 @@ export async function notifyApplicationStatusChange(params: {
         scholarshipName,
         newStatus,
         actorName,
+        actorRole,
     } = params;
 
+    const friendlyRoleName = formatRoleName(actorRole);
     let title = "";
     let message = "";
     let type: NotificationType = "APPLICATION_APPROVED";
@@ -157,17 +184,17 @@ export async function notifyApplicationStatusChange(params: {
         case "APPROVED":
         case "IN_PROGRESS":
             title = "Pengajuan Disetujui";
-            message = `Pengajuan ${scholarshipName} Anda telah disetujui${actorName ? ` oleh ${actorName}` : ""}.`;
+            message = `Pengajuan ${scholarshipName} Anda telah disetujui${friendlyRoleName ? ` oleh ${friendlyRoleName}` : ""}.`;
             type = "APPLICATION_APPROVED";
             break;
         case "REJECTED":
             title = "Pengajuan Ditolak";
-            message = `Pengajuan ${scholarshipName} Anda ditolak${actorName ? ` oleh ${actorName}` : ""}.`;
+            message = `Pengajuan ${scholarshipName} Anda ditolak${friendlyRoleName ? ` oleh ${friendlyRoleName}` : ""}.`;
             type = "APPLICATION_REJECTED";
             break;
         case "REVISION":
             title = "Perlu Revisi";
-            message = `Pengajuan ${scholarshipName} Anda memerlukan revisi.`;
+            message = `Pengajuan ${scholarshipName} Anda memerlukan revisi${friendlyRoleName ? ` dari ${friendlyRoleName}` : ""}.`;
             type = "APPLICATION_REVISION";
             break;
         case "COMPLETED":
@@ -186,7 +213,7 @@ export async function notifyApplicationStatusChange(params: {
         message,
         type,
         entityId: applicationId,
-        letterInstanceId: applicationId, // 🔴 TAMBAHAN
+        letterInstanceId: applicationId,
     });
 }
 
@@ -198,19 +225,23 @@ export async function notifyNewTask(params: {
     applicationId: string;
     scholarshipName: string;
     applicantName: string;
+    fromRole?: string;
 }) {
-    const { reviewerUserIds, applicationId, scholarshipName, applicantName } =
+    const { reviewerUserIds, applicationId, scholarshipName, applicantName, fromRole } =
         params;
 
+    const friendlyFromRole = formatRoleName(fromRole);
     const notifications = await Promise.all(
         reviewerUserIds.map((userId) =>
             createNotification({
                 userId,
                 title: "Pengajuan Baru",
-                message: `Pengajuan ${scholarshipName} dari ${applicantName} memerlukan persetujuan Anda.`,
+                message: fromRole 
+                    ? `Pengajuan ${scholarshipName} dari ${applicantName} telah disetujui oleh ${friendlyFromRole} dan memerlukan persetujuan Anda.`
+                    : `Pengajuan ${scholarshipName} dari ${applicantName} memerlukan persetujuan Anda.`,
                 type: "NEW_TASK",
                 entityId: applicationId,
-                letterInstanceId: applicationId, // 🔴 TAMBAHAN
+                letterInstanceId: applicationId,
             }),
         ),
     );
@@ -219,15 +250,16 @@ export async function notifyNewTask(params: {
 }
 
 /**
- * Notify supervisor about new application submission
+ * Notify supervisor about new application submission from student
  */
 export async function notifyApplicationSubmitted(params: {
     supervisorUserIds: string[];
     applicationId: string;
     scholarshipName: string;
     applicantName: string;
+    isResubmission?: boolean;
 }) {
-    const { supervisorUserIds, applicationId, scholarshipName, applicantName } =
+    const { supervisorUserIds, applicationId, scholarshipName, applicantName, isResubmission } =
         params;
 
     console.log("🔔 [notifyApplicationSubmitted] Called with:", {
@@ -236,6 +268,7 @@ export async function notifyApplicationSubmitted(params: {
         applicationId,
         scholarshipName,
         applicantName,
+        isResubmission,
     });
 
     if (!supervisorUserIds || supervisorUserIds.length === 0) {
@@ -250,6 +283,11 @@ export async function notifyApplicationSubmitted(params: {
             `🔔 [notifyApplicationSubmitted] Creating ${supervisorUserIds.length} notifications...`,
         );
 
+        const title = isResubmission ? "Pengajuan Revisi Masuk" : "Pengajuan Baru Masuk";
+        const message = isResubmission
+            ? `${applicantName} telah mengirim ulang pengajuan surat rekomendasi beasiswa ${scholarshipName} setelah revisi. Silakan tinjau dan berikan persetujuan.`
+            : `${applicantName} telah mengajukan surat rekomendasi beasiswa ${scholarshipName}. Silakan tinjau dan berikan persetujuan.`;
+
         const notifications = await Promise.all(
             supervisorUserIds.map((userId, index) => {
                 console.log(
@@ -257,8 +295,8 @@ export async function notifyApplicationSubmitted(params: {
                 );
                 return createNotification({
                     userId,
-                    title: "Pengajuan Baru Masuk",
-                    message: `${applicantName} telah mengajukan surat rekomendasi beasiswa ${scholarshipName}. Silakan tinjau dan berikan persetujuan.`,
+                    title,
+                    message,
                     type: "APPLICATION_SUBMITTED",
                     entityId: applicationId,
                     letterInstanceId: applicationId,
@@ -280,7 +318,7 @@ export async function notifyApplicationSubmitted(params: {
 }
 
 /**
- * Notify next role about application ready for review
+ * Notify next role about application ready for review (after approval)
  */
 export async function notifyApplicationReadyForReview(params: {
     nextRoleUserIds: string[];
@@ -288,6 +326,7 @@ export async function notifyApplicationReadyForReview(params: {
     scholarshipName: string;
     applicantName: string;
     currentRoleName: string;
+    isRevision?: boolean;
 }) {
     const {
         nextRoleUserIds,
@@ -295,17 +334,31 @@ export async function notifyApplicationReadyForReview(params: {
         scholarshipName,
         applicantName,
         currentRoleName,
+        isRevision,
     } = params;
+
+    const friendlyCurrentRole = formatRoleName(currentRoleName.replace(" (Revisi)", ""));
+    
+    let title: string;
+    let message: string;
+    
+    if (isRevision) {
+        title = "Revisi Menunggu Tindakan Anda";
+        message = `Surat rekomendasi beasiswa ${scholarshipName} dari ${applicantName} memerlukan revisi Anda. Diminta oleh ${friendlyCurrentRole}.`;
+    } else {
+        title = "Surat Menunggu Persetujuan";
+        message = `Surat rekomendasi beasiswa ${scholarshipName} dari ${applicantName} telah disetujui oleh ${friendlyCurrentRole} dan menunggu persetujuan Anda.`;
+    }
 
     const notifications = await Promise.all(
         nextRoleUserIds.map((userId) =>
             createNotification({
                 userId,
-                title: "Surat Menunggu Persetujuan",
-                message: `Surat rekomendasi beasiswa ${scholarshipName} dari ${applicantName} sudah disetujui oleh ${currentRoleName} dan menunggu persetujuan Anda.`,
+                title,
+                message,
                 type: "NEW_TASK",
                 entityId: applicationId,
-                letterInstanceId: applicationId, // 🔴 TAMBAHAN
+                letterInstanceId: applicationId,
             }),
         ),
     );
@@ -331,18 +384,29 @@ export async function notifyApplicationRejected(params: {
         rejectedByRole,
     } = params;
 
+    const friendlyRoleName = formatRoleName(rejectedByRole);
+    
+    let message = `Pengajuan surat rekomendasi beasiswa ${scholarshipName} Anda telah ditolak`;
+    if (friendlyRoleName) {
+        message += ` oleh ${friendlyRoleName}`;
+    }
+    message += ".";
+    if (rejectionReason) {
+        message += ` Alasan: ${rejectionReason}`;
+    }
+
     return await createNotification({
         userId: applicantUserId,
         title: "Pengajuan Ditolak",
-        message: `Pengajuan ${scholarshipName} Anda telah ditolak${rejectedByRole ? ` oleh ${rejectedByRole}` : ""}. ${rejectionReason ? `Alasan: ${rejectionReason}` : ""}`,
+        message,
         type: "APPLICATION_REJECTED",
         entityId: applicationId,
-        letterInstanceId: applicationId, // 🔴 TAMBAHAN
+        letterInstanceId: applicationId,
     });
 }
 
 /**
- * Notify applicant about revision request
+ * Notify applicant about revision request (from any role to mahasiswa)
  */
 export async function notifyApplicationRevisionRequested(params: {
     applicantUserId: string;
@@ -359,6 +423,8 @@ export async function notifyApplicationRevisionRequested(params: {
         requestedByRole,
     } = params;
 
+    const friendlyRoleName = formatRoleName(requestedByRole);
+
     // Ensure the notification is sent only if the applicant is the intended recipient
     const application = await Prisma.letterInstance.findUnique({
         where: { id: applicationId },
@@ -372,14 +438,69 @@ export async function notifyApplicationRevisionRequested(params: {
         return null;
     }
 
+    let message = `Pengajuan surat rekomendasi beasiswa ${scholarshipName} Anda memerlukan revisi`;
+    if (friendlyRoleName) {
+        message += ` dari ${friendlyRoleName}`;
+    }
+    message += ".";
+    if (revisionNotes) {
+        message += ` Catatan: ${revisionNotes}`;
+    }
+
     return await createNotification({
         userId: applicantUserId,
         title: "Perlu Revisi",
-        message: `Pengajuan ${scholarshipName} Anda memerlukan revisi${requestedByRole ? ` dari ${requestedByRole}` : ""}. ${revisionNotes ? `Catatan: ${revisionNotes}` : ""}`,
+        message,
         type: "APPLICATION_REVISION",
         entityId: applicationId,
-        letterInstanceId: applicationId, // 🔴 TAMBAHAN
+        letterInstanceId: applicationId,
     });
+}
+
+/**
+ * Notify specific role about revision request (from higher role to lower role)
+ * e.g., WD1 -> TU, WD1 -> SPV, TU -> SPV
+ */
+export async function notifyRevisionToRole(params: {
+    targetUserIds: string[];
+    applicationId: string;
+    scholarshipName: string;
+    applicantName: string;
+    requestedByRole: string;
+    targetRole: string;
+    revisionNotes?: string;
+}) {
+    const {
+        targetUserIds,
+        applicationId,
+        scholarshipName,
+        applicantName,
+        requestedByRole,
+        targetRole,
+        revisionNotes,
+    } = params;
+
+    const friendlyRequestedByRole = formatRoleName(requestedByRole);
+    const friendlyTargetRole = formatRoleName(targetRole);
+
+    const message = revisionNotes
+        ? `Surat rekomendasi beasiswa ${scholarshipName} dari ${applicantName} memerlukan revisi dari Anda. Diminta oleh ${friendlyRequestedByRole}. Catatan: ${revisionNotes}`
+        : `Surat rekomendasi beasiswa ${scholarshipName} dari ${applicantName} memerlukan revisi dari Anda. Diminta oleh ${friendlyRequestedByRole}.`;
+
+    const notifications = await Promise.all(
+        targetUserIds.map((userId) =>
+            createNotification({
+                userId,
+                title: `Revisi Diperlukan`,
+                message,
+                type: "APPLICATION_REVISION",
+                entityId: applicationId,
+                letterInstanceId: applicationId,
+            }),
+        ),
+    );
+
+    return notifications;
 }
 
 /**
@@ -395,10 +516,42 @@ export async function notifyApplicationPublished(params: {
     return await createNotification({
         userId: applicantUserId,
         title: "Surat Terbit!",
-        message: `Selamat! Surat rekomendasi beasiswa ${scholarshipName} telah terbit dan siap Anda unduh.`,
+        message: `Selamat! Surat rekomendasi beasiswa ${scholarshipName} Anda telah terbit dan siap diunduh. Silakan cek halaman detail untuk mengunduh surat.`,
         type: "APPLICATION_PUBLISHED",
         entityId: applicationId,
-        letterInstanceId: applicationId, // 🔴 TAMBAHAN
+        letterInstanceId: applicationId,
+    });
+}
+
+/**
+ * Notify applicant about approval progress (optional - to keep student informed)
+ */
+export async function notifyApprovalProgress(params: {
+    applicantUserId: string;
+    applicationId: string;
+    scholarshipName: string;
+    approvedByRole: string;
+    nextRole?: string;
+}) {
+    const { applicantUserId, applicationId, scholarshipName, approvedByRole, nextRole } = params;
+
+    const friendlyApprovedBy = formatRoleName(approvedByRole);
+    const friendlyNextRole = formatRoleName(nextRole);
+
+    let message = `Pengajuan surat rekomendasi beasiswa ${scholarshipName} Anda telah disetujui oleh ${friendlyApprovedBy}`;
+    if (friendlyNextRole && nextRole) {
+        message += ` dan sedang menunggu persetujuan dari ${friendlyNextRole}.`;
+    } else {
+        message += ".";
+    }
+
+    return await createNotification({
+        userId: applicantUserId,
+        title: "Pengajuan Disetujui",
+        message,
+        type: "APPLICATION_APPROVED",
+        entityId: applicationId,
+        letterInstanceId: applicationId,
     });
 }
 
