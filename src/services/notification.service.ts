@@ -359,6 +359,19 @@ export async function notifyApplicationRevisionRequested(params: {
         requestedByRole,
     } = params;
 
+    // Ensure the notification is sent only if the applicant is the intended recipient
+    const application = await Prisma.application.findUnique({
+        where: { id: applicationId },
+        select: { createdById: true },
+    });
+
+    if (!application || application.createdById !== applicantUserId) {
+        console.warn(
+            "Notification skipped: Applicant is not the intended recipient.",
+        );
+        return null;
+    }
+
     return await createNotification({
         userId: applicantUserId,
         title: "Perlu Revisi",

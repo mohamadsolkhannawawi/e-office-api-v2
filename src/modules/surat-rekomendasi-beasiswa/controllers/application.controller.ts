@@ -890,7 +890,9 @@ export class ApplicationController {
                 tempatLahir: mahasiswa?.tempatLahir || "",
                 tanggalLahir: mahasiswa?.tanggalLahir || "",
                 noHp: mahasiswa?.noHp || "",
-                semester: mahasiswa?.semester ? String(mahasiswa.semester) : "",
+                semester: mahasiswa?.semester
+                    ? String(mahasiswa.semester)
+                    : "",
                 ipk: mahasiswa?.ipk ? String(mahasiswa.ipk) : "",
                 ips: mahasiswa?.ips ? String(mahasiswa.ips) : "",
                 ...(application.values && typeof application.values === "object"
