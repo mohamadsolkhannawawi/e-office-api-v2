@@ -226,11 +226,50 @@ export class ApplicationService {
             });
         }
 
-        if (filters.startDate || filters.endDate) {
+        // Date filtering - only apply if valid date strings are provided
+        const hasValidStartDate =
+            filters.startDate &&
+            filters.startDate.trim() !== "" &&
+            !isNaN(Date.parse(filters.startDate));
+        const hasValidEndDate =
+            filters.endDate &&
+            filters.endDate.trim() !== "" &&
+            !isNaN(Date.parse(filters.endDate));
+
+        console.log("📅 Date Filter Check:", {
+            rawStartDate: filters.startDate,
+            rawEndDate: filters.endDate,
+            hasValidStartDate,
+            hasValidEndDate,
+        });
+
+        if (hasValidStartDate || hasValidEndDate) {
             const dateFilter: any = {};
-            if (filters.startDate) dateFilter.gte = new Date(filters.startDate);
-            if (filters.endDate) dateFilter.lte = new Date(filters.endDate);
+            if (hasValidStartDate) {
+                // Parse the ISO string directly - it already contains the correct timezone info
+                const startDate = new Date(filters.startDate);
+                dateFilter.gte = startDate;
+                console.log("📅 Start Date Filter:", {
+                    input: filters.startDate,
+                    parsed: startDate.toISOString(),
+                    gte: dateFilter.gte.toISOString(),
+                });
+            }
+            if (hasValidEndDate) {
+                // Parse the ISO string directly - it already contains the correct timezone info
+                const endDate = new Date(filters.endDate);
+                dateFilter.lte = endDate;
+                console.log("📅 End Date Filter:", {
+                    input: filters.endDate,
+                    parsed: endDate.toISOString(),
+                    lte: dateFilter.lte.toISOString(),
+                });
+            }
             andConditions.push({ createdAt: dateFilter });
+            console.log("📅 Final Date Filter Applied:", {
+                gte: dateFilter.gte?.toISOString(),
+                lte: dateFilter.lte?.toISOString(),
+            });
         }
 
         if (search && search.trim() !== "") {
@@ -283,11 +322,16 @@ export class ApplicationService {
             "Listing applications with where:",
             JSON.stringify(where, null, 2),
         );
+        console.log("Sorting:", {
+            sortOrder,
+            updatedAtOrder: sortOrder,
+            createdAtOrder: sortOrder,
+        });
 
         // Get all matching applications (we'll filter by role history in JS)
         const allItems = await db.letterInstance.findMany({
             where,
-            orderBy: { createdAt: sortOrder },
+            orderBy: [{ updatedAt: sortOrder }, { createdAt: sortOrder }],
             include: {
                 attachments: {
                     where: { deletedAt: null },
@@ -428,6 +472,26 @@ export class ApplicationService {
                 return false;
             });
         }
+
+        // Re-sort filteredItems based on sortOrder since filtering can change order
+        filteredItems.sort((a, b) => {
+            // Primary sort: updatedAt
+            const aUpdated = a.updatedAt?.getTime() || 0;
+            const bUpdated = b.updatedAt?.getTime() || 0;
+
+            if (aUpdated !== bUpdated) {
+                return sortOrder === "desc"
+                    ? bUpdated - aUpdated
+                    : aUpdated - bUpdated;
+            }
+
+            // Secondary sort: createdAt (fallback)
+            const aCreated = a.createdAt?.getTime() || 0;
+            const bCreated = b.createdAt?.getTime() || 0;
+            return sortOrder === "desc"
+                ? bCreated - aCreated
+                : aCreated - bCreated;
+        });
 
         // Apply pagination on filtered results
         const paginatedItems = filteredItems.slice(skip, skip + limit);
