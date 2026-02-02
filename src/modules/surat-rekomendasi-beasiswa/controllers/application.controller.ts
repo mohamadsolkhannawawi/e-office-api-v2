@@ -15,25 +15,14 @@ import {
     notifyApplicationRejected,
     notifyApplicationRevisionRequested,
     notifyApplicationPublished,
+    notifyRevisionToRole,
+    notifyApprovalProgress,
+    formatRoleName,
 } from "../../../services/notification.service.ts";
 
 const db = Prisma;
 
 export class ApplicationController {
-    /**
-     * Helper method to convert database role name to user-friendly format
-     */
-    static formatRoleName(roleName: string): string {
-        const roleMap: Record<string, string> = {
-            SUPERVISOR: "Supervisor Akademik",
-            MANAJER_TU: "Manajer TU",
-            WAKIL_DEKAN_1: "Wakil Dekan 1",
-            UPA: "Staff UPA",
-            MAHASISWA: "Mahasiswa",
-        };
-        return roleMap[roleName] || roleName;
-    }
-
     /**
      * Helper method to get basic application info without full details
      */
@@ -397,6 +386,7 @@ export class ApplicationController {
                                         applicationId: applicationId,
                                         scholarshipName: namaBeasiswa,
                                         applicantName: user.name || "Mahasiswa",
+                                        isResubmission: isResubmissionAfterRevision,
                                     },
                                 );
                                 console.log(
@@ -608,9 +598,7 @@ export class ApplicationController {
                             const rawRoleName =
                                 revisionHistory.actor.userRole[0].role.name;
                             lastRevisionFromRole =
-                                ApplicationController.formatRoleName(
-                                    rawRoleName,
-                                );
+                                formatRoleName(rawRoleName);
                         }
                     }
 
@@ -626,9 +614,7 @@ export class ApplicationController {
                         const lastHistory = app.history[app.history.length - 1];
                         if (lastHistory && lastHistory.role?.name) {
                             lastActorRole =
-                                ApplicationController.formatRoleName(
-                                    lastHistory.role.name,
-                                );
+                                formatRoleName(lastHistory.role.name);
                         }
                     }
 
@@ -1167,17 +1153,18 @@ export class ApplicationController {
                     : [user?.role].filter(Boolean);
                 const currentRoleName = userRoles[0] || "Unknown";
 
+                // Map step to role name for notifications
+                const STEP_ROLE_MAP_NAMES: Record<number, string> = {
+                    1: "SUPERVISOR",
+                    2: "MANAJER_TU",
+                    3: "WAKIL_DEKAN_1",
+                    4: "UPA",
+                };
+
                 switch (action) {
                     case "approve": {
                         // Notify next role (if not completed)
                         if (newStatus === "IN_PROGRESS" && newStep <= 4) {
-                            const STEP_ROLE_MAP_NAMES: Record<number, string> =
-                                {
-                                    1: "SUPERVISOR",
-                                    2: "MANAJER_TU",
-                                    3: "WAKIL_DEKAN_1",
-                                    4: "UPA",
-                                };
                             const nextRoleName = STEP_ROLE_MAP_NAMES[newStep];
                             if (nextRoleName) {
                                 const nextRoleUsers =
@@ -1199,9 +1186,21 @@ export class ApplicationController {
                                             currentApp.createdBy?.name ||
                                             "Mahasiswa",
                                         currentRoleName,
+                                        isRevision: false,
                                     });
                                 }
                             }
+
+                            // Also notify applicant about approval progress
+                            await notifyApprovalProgress({
+                                applicantUserId: currentApp.createdById,
+                                applicationId,
+                                scholarshipName:
+                                    currentApp.scholarshipName ||
+                                    "Surat Rekomendasi",
+                                approvedByRole: currentRoleName,
+                                nextRole: STEP_ROLE_MAP_NAMES[newStep],
+                            });
                         }
                         // Notify applicant if completed (published)
                         else if (newStatus === "COMPLETED") {
@@ -1231,10 +1230,9 @@ export class ApplicationController {
                     }
 
                     case "revision": {
-                        // Determine target role for revision
-                        let targetRoleName = "";
+                        // Handle revision notifications based on target
                         if (newStep === 0) {
-                            // Revision to Mahasiswa
+                            // Revision to Mahasiswa (from any role)
                             await notifyApplicationRevisionRequested({
                                 applicantUserId: currentApp.createdById,
                                 applicationId,
@@ -1245,15 +1243,8 @@ export class ApplicationController {
                                 requestedByRole: currentRoleName,
                             });
                         } else {
-                            // Revision to specific role
-                            const STEP_ROLE_MAP_NAMES: Record<number, string> =
-                                {
-                                    1: "SUPERVISOR",
-                                    2: "MANAJER_TU",
-                                    3: "WAKIL_DEKAN_1",
-                                    4: "UPA",
-                                };
-                            targetRoleName = STEP_ROLE_MAP_NAMES[newStep] || "";
+                            // Revision to specific role (e.g., WD1 -> TU, WD1 -> SPV, TU -> SPV)
+                            const targetRoleName = STEP_ROLE_MAP_NAMES[newStep] || "";
 
                             if (targetRoleName) {
                                 const targetRoleUsers =
@@ -1267,9 +1258,10 @@ export class ApplicationController {
                                 if (targetRoleUsers.length > 0) {
                                     const targetRoleUserIds =
                                         targetRoleUsers.map((ur) => ur.user.id);
+                                    
                                     // Notify target role about revision task
-                                    await notifyApplicationReadyForReview({
-                                        nextRoleUserIds: targetRoleUserIds,
+                                    await notifyRevisionToRole({
+                                        targetUserIds: targetRoleUserIds,
                                         applicationId,
                                         scholarshipName:
                                             currentApp.scholarshipName ||
@@ -1277,12 +1269,14 @@ export class ApplicationController {
                                         applicantName:
                                             currentApp.createdBy?.name ||
                                             "Mahasiswa",
-                                        currentRoleName: `${currentRoleName} (Revisi)`,
+                                        requestedByRole: currentRoleName,
+                                        targetRole: targetRoleName,
+                                        revisionNotes: notes,
                                     });
                                 }
                             }
 
-                            // Also notify applicant about revision
+                            // Also notify applicant about revision (so they know their application needs revision)
                             await notifyApplicationRevisionRequested({
                                 applicantUserId: currentApp.createdById,
                                 applicationId,
