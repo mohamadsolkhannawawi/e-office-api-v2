@@ -202,7 +202,7 @@ const letterNumberingRoutes = new Elysia({
                 where: {
                     userId: user.id,
                     role: {
-                        name: "upa",
+                        name: "UPA",
                     },
                 },
             });
