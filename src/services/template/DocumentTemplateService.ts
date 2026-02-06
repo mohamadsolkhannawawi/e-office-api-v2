@@ -9,35 +9,34 @@ import ImageModule from "docxtemplater-image-module-free";
 
 /**
  * Image size configuration (in pixels)
- * Adjust these values to change the size of generated images in documents
+ * All images are now standardized to 3cm x 3cm square format
  *
- * NOTE: Higher resolution = better quality but larger file size
- * The images will be scaled proportionally to fit within these dimensions
+ * NOTE: Images will be resized proportionally with white background
+ * to fit within 3cm x 3cm without cropping
  *
  * Conversion: 1 cm ≈ 37.8 pixels at 96 DPI
- * For print quality (300 DPI): 1 cm ≈ 118 pixels
+ * 3cm x 3cm = 113 x 113 pixels at 96 DPI
  */
 export const IMAGE_SIZE_CONFIG = {
-    // Signature: 6cm x 3cm (wider than tall, typical signature ratio)
-    // Using print quality resolution
+    // Signature: 3cm x 3cm (square)
     signature: {
-        width: 227, // ~6cm at 96 DPI
-        height: 113, // ~3cm at 96 DPI
+        width: 113, // 3cm at 96 DPI
+        height: 113, // 3cm at 96 DPI
     },
-    // Stamp: 4cm x 4cm (square)
+    // Stamp: 3cm x 3cm (square)
     stamp: {
-        width: 151, // ~4cm at 96 DPI
-        height: 151, // ~4cm at 96 DPI
+        width: 113, // 3cm at 96 DPI
+        height: 113, // 3cm at 96 DPI
     },
-    // QR Code: 3cm x 3cm (square, needs to be readable)
+    // QR Code: 3cm x 3cm (square)
     qrCode: {
-        width: 113, // ~3cm at 96 DPI
-        height: 113, // ~3cm at 96 DPI
+        width: 113, // 3cm at 96 DPI
+        height: 113, // 3cm at 96 DPI
     },
     // Default for unknown images
     default: {
-        width: 150,
-        height: 150,
+        width: 113, // 3cm at 96 DPI
+        height: 113, // 3cm at 96 DPI
     },
 };
 
@@ -104,7 +103,7 @@ export class DocumentTemplateService {
         try {
             const qrBuffer = await QRCode.toBuffer(data, {
                 type: "png",
-                margin: 1,
+                margin: 0, // No margin to maximize QR code size within template area
                 width: 400, // High resolution for better quality
                 errorCorrectionLevel: "M", // Medium error correction
                 color: {
@@ -120,19 +119,81 @@ export class DocumentTemplateService {
     }
 
     /**
+     * Process QR code specifically - fills entire template area without padding
+     * QR codes need to fill the full 3cm x 3cm area for optimal scanning
+     */
+    async processQRCode(
+        input: Buffer | string,
+        maxWidth: number = 113,
+        maxHeight: number = 113,
+    ): Promise<Buffer> {
+        try {
+            // If input is base64 string, convert to Buffer
+            const inputBuffer =
+                typeof input === "string"
+                    ? Buffer.from(input, "base64")
+                    : input;
+
+            const processedImage = await sharp(inputBuffer)
+                .resize(maxWidth, maxHeight, {
+                    fit: "fill", // Fill entire area without padding - optimal for QR codes
+                })
+                .png({ quality: 100, compressionLevel: 9 }) // Max lossless compression
+                .toBuffer();
+
+            return processedImage;
+        } catch (error) {
+            console.error("Error processing QR code:", error);
+            throw new Error("Failed to process QR code");
+        }
+    }
+
+    /**
+     * Process signature specifically - maximizes size while preserving aspect ratio
+     * Uses 'cover' fit to fill area as much as possible without distortion
+     */
+    async processSignature(
+        input: Buffer | string,
+        maxWidth: number = 113,
+        maxHeight: number = 113,
+    ): Promise<Buffer> {
+        try {
+            // If input is base64 string, convert to Buffer
+            const inputBuffer =
+                typeof input === "string"
+                    ? Buffer.from(input, "base64")
+                    : input;
+
+            const processedImage = await sharp(inputBuffer)
+                .resize(maxWidth, maxHeight, {
+                    fit: "cover", // Fill area while maintaining aspect ratio - better for signatures
+                    position: "center", // Center the signature
+                })
+                .png({ quality: 100, compressionLevel: 9 }) // Max lossless compression
+                .toBuffer();
+
+            return processedImage;
+        } catch (error) {
+            console.error("Error processing signature:", error);
+            throw new Error("Failed to process signature");
+        }
+    }
+
+    /**
      * Process image for template insertion (from file path)
-     * Uses fit: "inside" to scale proportionally without cropping
+     * Resizes to square format (3cm x 3cm) with white background
+     * Image is scaled proportionally and centered without cropping
      */
     async processImage(
         imagePath: string,
-        maxWidth: number = 150,
-        maxHeight: number = 100,
+        maxWidth: number = 113,
+        maxHeight: number = 113,
     ): Promise<Buffer> {
         try {
             const processedImage = await sharp(imagePath)
                 .resize(maxWidth, maxHeight, {
-                    fit: "inside", // Scale to fit inside bounds, no cropping
-                    withoutEnlargement: false, // Allow enlargement if needed
+                    fit: "contain", // Scale to fit with background, no cropping
+                    background: { r: 255, g: 255, b: 255, alpha: 1 }, // White background
                 })
                 .png({ quality: 100, compressionLevel: 9 }) // Max lossless compression
                 .toBuffer();
@@ -146,8 +207,8 @@ export class DocumentTemplateService {
 
     /**
      * Process image from Buffer or base64 string
-     * Resizes the image to fit within maxWidth x maxHeight while maintaining aspect ratio
-     * Uses fit: "inside" to ensure no cropping occurs
+     * Resizes to square format (3cm x 3cm) with white background
+     * Image is scaled proportionally and centered without cropping
      */
     async processImageBuffer(
         input: Buffer | string,
@@ -163,8 +224,8 @@ export class DocumentTemplateService {
 
             const processedImage = await sharp(inputBuffer)
                 .resize(maxWidth, maxHeight, {
-                    fit: "inside", // Scale to fit inside bounds, no cropping
-                    withoutEnlargement: false, // Allow enlargement if needed
+                    fit: "contain", // Scale to fit with background, no cropping
+                    background: { r: 255, g: 255, b: 255, alpha: 1 }, // White background
                 })
                 .png({ quality: 100, compressionLevel: 9 }) // Max lossless compression
                 .toBuffer();
@@ -494,8 +555,8 @@ export class DocumentTemplateService {
                 const qrBuffer = await this.generateQRCode(
                     digitalFeatures.qrCodeData,
                 );
-                // Resize QR code to configured size
-                const resizedQr = await this.processImageBuffer(
+                // Resize QR code to fill entire template area for optimal scanning
+                const resizedQr = await this.processQRCode(
                     qrBuffer,
                     IMAGE_SIZE_CONFIG.qrCode.width,
                     IMAGE_SIZE_CONFIG.qrCode.height,
@@ -505,8 +566,8 @@ export class DocumentTemplateService {
 
             // Handle signature - either from file path or direct base64
             if (digitalFeatures.signatureImageBase64) {
-                // Resize base64 signature to configured size
-                const resizedSig = await this.processImageBuffer(
+                // Process signature to maximize size while preserving aspect ratio
+                const resizedSig = await this.processSignature(
                     digitalFeatures.signatureImageBase64,
                     IMAGE_SIZE_CONFIG.signature.width,
                     IMAGE_SIZE_CONFIG.signature.height,
@@ -516,8 +577,12 @@ export class DocumentTemplateService {
                 digitalFeatures.signatureImagePath &&
                 existsSync(digitalFeatures.signatureImagePath)
             ) {
-                const signatureBuffer = await this.processImage(
+                // Read file and process signature to maximize size
+                const fileBuffer = readFileSync(
                     digitalFeatures.signatureImagePath,
+                );
+                const signatureBuffer = await this.processSignature(
+                    fileBuffer,
                     IMAGE_SIZE_CONFIG.signature.width,
                     IMAGE_SIZE_CONFIG.signature.height,
                 );
