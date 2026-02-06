@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { Prisma } from "@backend/db/index.ts";
+import { config } from "@backend/config.ts";
 
 /**
  * QR Code Verification Service
@@ -13,7 +14,7 @@ import { Prisma } from "@backend/db/index.ts";
  */
 export function generateVerificationCode(
     applicationId: string,
-    letterNumber: string
+    letterNumber: string,
 ): string {
     const timestamp = Date.now().toString();
     const data = `${applicationId}|${letterNumber}|${timestamp}`;
@@ -51,6 +52,7 @@ export async function createVerificationRecord(params: {
 
 /**
  * Verify letter by code
+ * Returns comprehensive verification data including history and applicant info
  */
 export async function verifyLetter(code: string) {
     const record = await Prisma.letterVerification.findUnique({
@@ -59,6 +61,31 @@ export async function verifyLetter(code: string) {
             application: {
                 include: {
                     letterType: true,
+                    createdBy: {
+                        include: {
+                            mahasiswa: {
+                                include: {
+                                    departemen: true,
+                                    programStudi: true,
+                                },
+                            },
+                            pegawai: {
+                                include: {
+                                    departemen: true,
+                                    programStudi: true,
+                                },
+                            },
+                        },
+                    },
+                    history: {
+                        include: {
+                            actor: true,
+                            role: true,
+                        },
+                        orderBy: {
+                            createdAt: "asc",
+                        },
+                    },
                 },
             },
         },
@@ -74,12 +101,50 @@ export async function verifyLetter(code: string) {
         data: { verifiedCount: { increment: 1 } },
     });
 
+    // Extract applicant information
+    const createdBy = record.application.createdBy;
+    const applicant = {
+        name: createdBy.name,
+        email: createdBy.email,
+        nim: createdBy.mahasiswa?.nim,
+        departemen:
+            createdBy.mahasiswa?.departemen?.name ||
+            createdBy.pegawai?.departemen?.name,
+        programStudi:
+            createdBy.mahasiswa?.programStudi?.name ||
+            createdBy.pegawai?.programStudi?.name,
+    };
+
+    // Format history for public display
+    const history = record.application.history.map((h) => ({
+        action: h.action,
+        note: h.note,
+        actorName: h.actor.name,
+        roleName: h.role?.name || null,
+        status: h.status,
+        timestamp: h.createdAt,
+    }));
+
     return {
         isValid: true,
         letterNumber: record.letterNumber,
         issuedAt: record.createdAt,
         verifiedCount: record.verifiedCount + 1,
-        application: record.application,
+        publishedAt: record.application.publishedAt,
+        letterType: {
+            id: record.application.letterType.id,
+            name: record.application.letterType.name,
+            description: record.application.letterType.description,
+        },
+        applicant,
+        application: {
+            id: record.application.id,
+            scholarshipName: record.application.scholarshipName,
+            status: record.application.status,
+            createdById: record.application.createdById,
+            createdAt: record.application.createdAt,
+        },
+        history,
     };
 }
 
@@ -87,8 +152,7 @@ export async function verifyLetter(code: string) {
  * Generate QR code URL
  */
 export function getQRCodeUrl(code: string, baseUrl?: string): string {
-    const base =
-        baseUrl || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const base = baseUrl || config.FRONTEND_URL;
     return `${base}/verify/${code}`;
 }
 
@@ -100,6 +164,6 @@ export function getQRCodeImageUrl(code: string, baseUrl?: string): string {
     const verifyUrl = getQRCodeUrl(code, baseUrl);
     // Menggunakan QR Server untuk generate QR code image
     return `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(
-        verifyUrl
+        verifyUrl,
     )}`;
 }
