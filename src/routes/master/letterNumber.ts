@@ -5,6 +5,7 @@ import {
     getLetterNumberStats,
 } from "@backend/services/letterNumber.service.ts";
 import { auth } from "@backend/lib/auth.ts";
+import { config } from "@backend/config.ts";
 
 /**
  * Letter Number Routes
@@ -80,8 +81,7 @@ const letterNumberRoutes = new Elysia({
                     code: code,
                 });
 
-                const appUrl =
-                    process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+                const appUrl = config.FRONTEND_URL;
                 verificationData = {
                     code,
                     verifyUrl: getQRCodeUrl(code, appUrl),
