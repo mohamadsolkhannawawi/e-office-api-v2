@@ -6,3 +6,5 @@ node_modules
 /uploads/
 
 autogen.routes.ts
+
+prisma/migrations_backup_20260202/
