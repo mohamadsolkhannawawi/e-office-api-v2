@@ -19,6 +19,7 @@ import {
     notifyApprovalProgress,
     formatRoleName,
 } from "../../../services/notification.service.ts";
+import { config } from "../../../config.ts";
 
 const db = Prisma;
 
@@ -386,7 +387,8 @@ export class ApplicationController {
                                         applicationId: applicationId,
                                         scholarshipName: namaBeasiswa,
                                         applicantName: user.name || "Mahasiswa",
-                                        isResubmission: isResubmissionAfterRevision,
+                                        isResubmission:
+                                            isResubmissionAfterRevision,
                                     },
                                 );
                                 console.log(
@@ -597,8 +599,7 @@ export class ApplicationController {
                         ) {
                             const rawRoleName =
                                 revisionHistory.actor.userRole[0].role.name;
-                            lastRevisionFromRole =
-                                formatRoleName(rawRoleName);
+                            lastRevisionFromRole = formatRoleName(rawRoleName);
                         }
                     }
 
@@ -613,8 +614,9 @@ export class ApplicationController {
                         // Get the last entry in history (most recent action)
                         const lastHistory = app.history[app.history.length - 1];
                         if (lastHistory && lastHistory.role?.name) {
-                            lastActorRole =
-                                formatRoleName(lastHistory.role.name);
+                            lastActorRole = formatRoleName(
+                                lastHistory.role.name,
+                            );
                         }
                     }
 
@@ -754,13 +756,11 @@ export class ApplicationController {
                                       application.verification.verifiedCount,
                                   qrCodeUrl: getQRCodeImageUrl(
                                       application.verification.code,
-                                      process.env.NEXT_PUBLIC_APP_URL ||
-                                          "http://localhost:3000",
+                                      config.FRONTEND_URL,
                                   ),
                                   verifyLink: getQRCodeUrl(
                                       application.verification.code,
-                                      process.env.NEXT_PUBLIC_APP_URL ||
-                                          "http://localhost:3000",
+                                      config.FRONTEND_URL,
                                   ),
                               }
                             : null,
@@ -876,9 +876,7 @@ export class ApplicationController {
                 tempatLahir: mahasiswa?.tempatLahir || "",
                 tanggalLahir: mahasiswa?.tanggalLahir || "",
                 noHp: mahasiswa?.noHp || "",
-                semester: mahasiswa?.semester
-                    ? String(mahasiswa.semester)
-                    : "",
+                semester: mahasiswa?.semester ? String(mahasiswa.semester) : "",
                 ipk: mahasiswa?.ipk ? String(mahasiswa.ipk) : "",
                 ips: mahasiswa?.ips ? String(mahasiswa.ips) : "",
                 ...(application.values && typeof application.values === "object"
@@ -918,13 +916,11 @@ export class ApplicationController {
                                   application.verification.verifiedCount,
                               qrCodeUrl: getQRCodeImageUrl(
                                   application.verification.code,
-                                  process.env.NEXT_PUBLIC_APP_URL ||
-                                      "http://localhost:3000",
+                                  config.FRONTEND_URL,
                               ),
                               verifyLink: getQRCodeUrl(
                                   application.verification.code,
-                                  process.env.NEXT_PUBLIC_APP_URL ||
-                                      "http://localhost:3000",
+                                  config.FRONTEND_URL,
                               ),
                           }
                         : null,
@@ -1244,7 +1240,8 @@ export class ApplicationController {
                             });
                         } else {
                             // Revision to specific role (e.g., WD1 -> TU, WD1 -> SPV, TU -> SPV)
-                            const targetRoleName = STEP_ROLE_MAP_NAMES[newStep] || "";
+                            const targetRoleName =
+                                STEP_ROLE_MAP_NAMES[newStep] || "";
 
                             if (targetRoleName) {
                                 const targetRoleUsers =
@@ -1258,7 +1255,7 @@ export class ApplicationController {
                                 if (targetRoleUsers.length > 0) {
                                     const targetRoleUserIds =
                                         targetRoleUsers.map((ur) => ur.user.id);
-                                    
+
                                     // Notify target role about revision task
                                     await notifyRevisionToRole({
                                         targetUserIds: targetRoleUserIds,
