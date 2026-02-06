@@ -11,6 +11,7 @@ import type {
 import { join } from "path";
 import { existsSync, writeFileSync, mkdirSync } from "fs";
 import { SRB_TEMPLATE_PATH } from "../../config/templates.config.js";
+import { config } from "../../config.js";
 
 const prisma = Prisma;
 
@@ -183,7 +184,7 @@ export class SuratRekomendasiTemplateService {
                     data.letterNumber,
                 );
                 if (verification) {
-                    const verificationUrl = `${process.env.FRONTEND_URL}/verify/${verification.code}`;
+                    const verificationUrl = `${config.FRONTEND_URL}/verify/${verification.code}`;
                     digitalFeatures.qrCodeData = verificationUrl;
                 }
             } catch (error) {
