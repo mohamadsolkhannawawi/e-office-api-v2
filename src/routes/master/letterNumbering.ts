@@ -7,8 +7,15 @@ import {
     isLetterNumberInUse,
     getNumberingSummary,
 } from "@backend/services/letterNumbering.service.ts";
+import {
+    generateVerificationCode,
+    createVerificationRecord,
+    getQRCodeImageUrl,
+    getQRCodeUrl,
+} from "@backend/services/verification.service.ts";
 import { Prisma } from "@backend/db/index.ts";
 import { auth } from "@backend/lib/auth.ts";
+import { config } from "@backend/config.ts";
 
 /**
  * Letter Numbering Management Routes
@@ -266,8 +273,45 @@ const letterNumberingRoutes = new Elysia({
                     letterNumber: true,
                     scholarshipName: true,
                     status: true,
+                    verification: true,
                 },
             });
+
+            // Create or update verification record
+            const appUrl = config.FRONTEND_URL;
+            let verificationData = null;
+
+            if (!updated.verification) {
+                // Create new verification record
+                const code = generateVerificationCode(
+                    params.applicationId,
+                    newLetterNumber,
+                );
+                await createVerificationRecord({
+                    applicationId: params.applicationId,
+                    letterNumber: newLetterNumber,
+                    code: code,
+                });
+                verificationData = {
+                    code,
+                    verifyUrl: getQRCodeUrl(code, appUrl),
+                    qrImage: getQRCodeImageUrl(code, appUrl),
+                };
+            } else {
+                // Update existing verification record letterNumber
+                await Prisma.letterVerification.update({
+                    where: { applicationId: params.applicationId },
+                    data: { letterNumber: newLetterNumber },
+                });
+                verificationData = {
+                    code: updated.verification.code,
+                    verifyUrl: getQRCodeUrl(updated.verification.code, appUrl),
+                    qrImage: getQRCodeImageUrl(
+                        updated.verification.code,
+                        appUrl,
+                    ),
+                };
+            }
 
             return {
                 success: true,
@@ -277,6 +321,7 @@ const letterNumberingRoutes = new Elysia({
                     namaAplikasi:
                         updated.scholarshipName || "Surat Rekomendasi Beasiswa",
                     status: updated.status,
+                    verification: verificationData,
                     message: "Nomor surat berhasil diperbarui",
                 },
             };
