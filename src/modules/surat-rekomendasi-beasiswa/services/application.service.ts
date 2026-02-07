@@ -245,7 +245,7 @@ export class ApplicationService {
 
         if (hasValidStartDate || hasValidEndDate) {
             const dateFilter: any = {};
-            if (hasValidStartDate) {
+            if (hasValidStartDate && filters.startDate) {
                 // Parse the ISO string directly - it already contains the correct timezone info
                 const startDate = new Date(filters.startDate);
                 dateFilter.gte = startDate;
@@ -255,7 +255,7 @@ export class ApplicationService {
                     gte: dateFilter.gte.toISOString(),
                 });
             }
-            if (hasValidEndDate) {
+            if (hasValidEndDate && filters.endDate) {
                 // Parse the ISO string directly - it already contains the correct timezone info
                 const endDate = new Date(filters.endDate);
                 dateFilter.lte = endDate;
@@ -816,7 +816,7 @@ export class ApplicationService {
         // Find unique letters where:
         // - This role took action (approve, reject, revision), OR
         // - Letter currently at this role (might not have history yet if just arrived)
-        const letterIdsFromHistory = await db.letterHistory.findMany({
+        const monthlyHistoryLetters = await db.letterHistory.findMany({
             where: {
                 roleId: roleId,
                 createdAt: { gte: startOfMonth },
@@ -829,7 +829,7 @@ export class ApplicationService {
             distinct: ["letterInstanceId"],
         });
 
-        const letterIdsCurrentlyAtRole = await db.letterInstance.findMany({
+        const monthlyCurrentLetters = await db.letterInstance.findMany({
             where: {
                 ...baseWhere,
                 currentRoleId: roleId,
@@ -841,16 +841,16 @@ export class ApplicationService {
 
         // Combine and deduplicate
         const allLetterIds = new Set([
-            ...letterIdsFromHistory.map((l) => l.letterInstanceId),
-            ...letterIdsCurrentlyAtRole.map((l) => l.id),
+            ...monthlyHistoryLetters.map((l) => l.letterInstanceId),
+            ...monthlyCurrentLetters.map((l) => l.id),
         ]);
 
         const totalBulanIni = allLetterIds.size;
 
         console.log("📊 Total Bulan Ini:", {
             count: totalBulanIni,
-            fromHistory: letterIdsFromHistory.length,
-            currentlyAtRole: letterIdsCurrentlyAtRole.length,
+            fromHistory: monthlyHistoryLetters.length,
+            currentlyAtRole: monthlyCurrentLetters.length,
         });
 
         // 4. TREN VOLUME 30 HARI: Letters that reached this role in last 30 days
@@ -886,7 +886,8 @@ export class ApplicationService {
             .reverse();
 
         // 5. DISTRIBUSI STATUS: Count letters by their current status that have reached this role
-        const allLetterIdsReachedThisRole = await db.letterHistory.findMany({
+        // Include both letters processed by this role AND letters currently at this role
+        const distributionHistoryLetters = await db.letterHistory.findMany({
             where: {
                 roleId: roleId,
                 letterInstance: {
@@ -898,9 +899,22 @@ export class ApplicationService {
             distinct: ["letterInstanceId"],
         });
 
-        const letterIds = allLetterIdsReachedThisRole.map(
-            (l) => l.letterInstanceId,
-        );
+        const distributionCurrentLetters = await db.letterInstance.findMany({
+            where: {
+                ...baseWhere,
+                currentRoleId: roleId,
+                currentStep: roleStep,
+            },
+            select: { id: true },
+        });
+
+        // Combine and deduplicate all letters that have reached or are at this role
+        const allLetterIdsSet = new Set([
+            ...distributionHistoryLetters.map((l) => l.letterInstanceId),
+            ...distributionCurrentLetters.map((l) => l.id),
+        ]);
+
+        const letterIds = Array.from(allLetterIdsSet);
 
         const [pending, inProgress, revision, completed, rejected] =
             await Promise.all([
