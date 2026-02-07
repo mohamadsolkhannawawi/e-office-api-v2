@@ -2,6 +2,7 @@ import { Elysia, t } from "elysia";
 import { Prisma } from "../../db/index.js";
 import { pdfConversionService } from "../../services/pdf/PdfConversionService.js";
 import { SuratRekomendasiTemplateService } from "../../services/template/index.js";
+import { DocumentCleanupService } from "../../services/DocumentCleanupService.js";
 import { writeFileSync } from "fs";
 import { join } from "path";
 
@@ -265,6 +266,14 @@ export const templatesRoute = new Elysia({ prefix: "/templates" })
                     if (!fs.existsSync(uploadDir)) {
                         fs.mkdirSync(uploadDir, { recursive: true });
                     }
+
+                    // 🧹 Cleanup old documents before creating new ones
+                    console.log(
+                        `🧹 [generate] Cleaning up old documents for: ${letterInstanceId}`,
+                    );
+                    await DocumentCleanupService.cleanupOldDocuments(
+                        letterInstanceId,
+                    );
 
                     writeFileSync(
                         join(process.cwd(), filePath),
@@ -1257,9 +1266,17 @@ export const templatesRoute = new Elysia({ prefix: "/templates" })
                     fs.mkdirSync(uploadDir, { recursive: true });
                 }
 
+                // 🧹 Cleanup old documents before creating new ones
+                console.log(
+                    `🧹 [letter/generate] Cleaning up old documents for: ${letterInstanceId}`,
+                );
+                await DocumentCleanupService.cleanupOldDocuments(
+                    letterInstanceId,
+                );
+
                 writeFileSync(join(process.cwd(), filePath), documentBuffer);
 
-                // Delete old generation log if exists
+                // Delete old generation log if exists (this is now redundant since cleanup already handles this)
                 await prisma.documentGenerationLog.deleteMany({
                     where: { letterInstanceId },
                 });
