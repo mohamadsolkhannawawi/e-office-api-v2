@@ -3,6 +3,7 @@ import { ROLE_STEP_MAP } from "../constants.ts";
 import { MinioService } from "../../../shared/services/minio.service.ts";
 import { Prisma } from "../../../db/index.ts";
 import { SuratRekomendasiTemplateService } from "../../../services/template/SuratRekomendasiTemplateService.js";
+import { DocumentCleanupService } from "../../../services/DocumentCleanupService.ts";
 import { writeFileSync } from "fs";
 import { join } from "path";
 import {
@@ -25,6 +26,18 @@ const db = Prisma;
 
 export class ApplicationController {
     /**
+     * Helper method untuk validasi autentikasi user
+     */
+    private static validateUserAuth(user: any, set: any): boolean {
+        if (!user || !user.id) {
+            console.log("❌ [auth] No user authentication");
+            set.status = 401;
+            return false;
+        }
+        return true;
+    }
+
+    /**
      * Helper method to get basic application info without full details
      */
     static async getApplicationDetailService(applicationId: string) {
@@ -41,6 +54,14 @@ export class ApplicationController {
         set: any;
     }) {
         try {
+            // Validate user authentication
+            if (!ApplicationController.validateUserAuth(user, set)) {
+                return {
+                    error: "Authentication required",
+                    requiresLogin: true,
+                };
+            }
+
             console.log(
                 "🚀 [createApplication] Started with user:",
                 user?.email,
@@ -475,6 +496,15 @@ export class ApplicationController {
                 },
                 query,
             });
+
+            // Add null check for user authentication
+            if (!ApplicationController.validateUserAuth(user, set)) {
+                return {
+                    error: "Authentication required",
+                    requiresLogin: true,
+                };
+            }
+
             const {
                 status,
                 currentStep,
@@ -1307,16 +1337,47 @@ export class ApplicationController {
                 console.log(
                     `📄 [verifyApplication] Triggering auto-generate for ${applicationId}`,
                 );
-                // Call static method within same class
-                ApplicationController.autoGenerateTemplate(
-                    applicationId,
-                    applicationId,
-                ).catch((err) => {
-                    console.error(
-                        "❌ [verifyApplication] Background template generation failed:",
-                        err,
-                    );
-                });
+
+                // 🔴 Trigger Auto-Generation to ensure PDF reflects the new status/signature/number
+                // For publish events, we'll do extra cleanup after generation
+                console.log(
+                    `📄 [verifyApplication] Triggering auto-generate for ${applicationId}`,
+                );
+
+                // Call static method within same class - wait for completion if publishing
+                if (newStatus === "COMPLETED") {
+                    // For publish, we wait for template generation to complete then do extra cleanup
+                    try {
+                        await ApplicationController.autoGenerateTemplate(
+                            applicationId,
+                            applicationId,
+                        );
+                        // Extra cleanup after publish to ensure only final files remain
+                        console.log(
+                            `🧹 [verifyApplication] Extra cleanup after publish for: ${applicationId}`,
+                        );
+                        await DocumentCleanupService.cleanupKeepLatest(
+                            applicationId,
+                        );
+                        await DocumentCleanupService.cleanupTempFiles();
+                    } catch (err) {
+                        console.error(
+                            "❌ [verifyApplication] Template generation failed during publish:",
+                            err,
+                        );
+                    }
+                } else {
+                    // For non-publish actions, generate in background as before
+                    ApplicationController.autoGenerateTemplate(
+                        applicationId,
+                        applicationId,
+                    ).catch((err) => {
+                        console.error(
+                            "❌ [verifyApplication] Background template generation failed:",
+                            err,
+                        );
+                    });
+                }
             } catch (genError) {
                 console.error(
                     "❌ [verifyApplication] Failed to initiate generation:",
@@ -1632,16 +1693,14 @@ export class ApplicationController {
                 fs.mkdirSync(uploadDir, { recursive: true });
             }
 
-            // Write file
-            writeFileSync(join(process.cwd(), filePath), documentBuffer);
+            // 🧹 Cleanup old documents before creating new ones
+            console.log(
+                `🧹 [autoGenerateTemplate] Cleaning up old documents for: ${letterInstanceId}`,
+            );
+            await DocumentCleanupService.cleanupOldDocuments(letterInstanceId);
 
-            // Delete old generation log if exists
-            if (existingLog) {
-                // Use deleteMany to avoid error if record is already deleted by concurrent request
-                await db.documentGenerationLog.deleteMany({
-                    where: { id: existingLog.id },
-                });
-            }
+            // Write new file
+            writeFileSync(join(process.cwd(), filePath), documentBuffer);
 
             // Create new generation log
             await db.documentGenerationLog.create({
