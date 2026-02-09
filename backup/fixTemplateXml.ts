@@ -26,8 +26,8 @@ if (args.length < 2) {
     process.exit(1);
 }
 
-const inputPath = join(process.cwd(), args[0]);
-const outputPath = join(process.cwd(), args[1]);
+const inputPath = join(process.cwd(), args[0] ?? "");
+const outputPath = join(process.cwd(), args[1] ?? "");
 
 console.log(`📄 Reading template: ${inputPath}`);
 const content = readFileSync(inputPath);

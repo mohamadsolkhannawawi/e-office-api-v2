@@ -15,7 +15,7 @@ console.log("Loading template:", templatePath);
 
 const content = readFileSync(templatePath);
 const zip = new PizZip(content);
-let doc = zip.file("word/document.xml")!.asText();
+let doc = zip.file("word/document.xml")?.asText() ?? "";
 
 // Fix program_studi typo using split/join
 doc = doc.split("{{program_studi}").join("{{program_studi}}");
@@ -40,9 +40,10 @@ console.log("Saved debug-template.txt for inspection");
 // Find all { and } positions
 const bracePositions: { char: string; pos: number; context: string }[] = [];
 for (let i = 0; i < textContent.length; i++) {
-    if (textContent[i] === "{" || textContent[i] === "}") {
+    const ch = textContent[i] ?? "";
+    if (ch === "{" || ch === "}") {
         bracePositions.push({
-            char: textContent[i],
+            char: ch,
             pos: i,
             context: textContent.substring(Math.max(0, i - 10), i + 15),
         });
