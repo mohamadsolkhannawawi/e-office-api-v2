@@ -25,6 +25,15 @@ export const auth = betterAuth({
             console.log(`Password reset URL for ${user.email}: ${url}`);
         },
     },
+    user: {
+        additionalFields: {
+            emailVerified: {
+                type: "boolean",
+                defaultValue: false,
+                required: false,
+            },
+        },
+    },
     session: {
         expiresIn: 60 * 60 * 24 * 7, // 7 days
         updateAge: 60 * 60 * 24, // Update session every 24 hours
