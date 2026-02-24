@@ -166,6 +166,70 @@ export const app = new Elysia()
             };
         }
     })
+    // Custom sign-in interceptor to validate emailVerified BEFORE Better Auth processes the request
+    .post("/api/auth/sign-in/email", async ({ body, request }) => {
+        try {
+            const { email, password, callbackURL } = body as {
+                email: string;
+                password: string;
+                callbackURL?: string;
+            };
+
+            // Pre-validation: Check if user account is active (emailVerified=true)
+            const user = await prisma.user.findUnique({
+                where: { email },
+                select: {
+                    id: true,
+                    emailVerified: true,
+                    email: true,
+                    name: true,
+                },
+            });
+
+            // If user found and account is deactivated (emailVerified=false), reject immediately
+            if (user && !user.emailVerified) {
+                console.log(
+                    `>>> SIGN-IN BLOCKED: Account deactivated for ${email}`,
+                );
+                return new Response(
+                    JSON.stringify({
+                        error: "Account has been deactivated. Please contact administrator.",
+                        code: "ACCOUNT_DEACTIVATED",
+                    }),
+                    {
+                        status: 403,
+                        headers: { "Content-Type": "application/json" },
+                    },
+                );
+            }
+
+            // If validation passed, create new request with same body for Better Auth
+            console.log(
+                `>>> SIGN-IN: Forwarding to Better Auth handler for ${email}`,
+            );
+            const newRequest = new Request(request.url, {
+                method: request.method,
+                headers: request.headers,
+                body: JSON.stringify({ email, password, callbackURL }),
+            });
+
+            return await auth.handler(newRequest);
+        } catch (error: any) {
+            console.error(">>> CUSTOM SIGN-IN ERROR:", error);
+
+            // Pass through any authentication errors from Better Auth
+            return new Response(
+                JSON.stringify({
+                    error: error.message || "Authentication failed",
+                    code: "AUTH_ERROR",
+                }),
+                {
+                    status: 401,
+                    headers: { "Content-Type": "application/json" },
+                },
+            );
+        }
+    })
     // Mount Better Auth handler for authentication endpoints with error handling
     .all("/api/auth/*", async ({ request }) => {
         try {
