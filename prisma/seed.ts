@@ -18,6 +18,7 @@ async function main() {
         { name: "MANAJER_TU" },
         { name: "WAKIL_DEKAN_1" },
         { name: "UPA" },
+        { name: "SUPER_ADMIN" },
     ];
 
     for (const role of roles) {
@@ -226,6 +227,21 @@ async function main() {
         },
     );
 
+    // Super Admin
+    await upsertUser(
+        "admin@undip.ac.id",
+        "Super Admin",
+        "SUPER_ADMIN",
+        "admin123",
+        {
+            pegawai: {
+                nip: "198505052010011004",
+                jabatan: "Administrator Sistem",
+                noHp: "081299887766",
+            },
+        },
+    );
+
     console.log("Users created.");
 
     // 5. Create Letter Type (Letter Definition)
@@ -354,8 +370,15 @@ async function main() {
     console.log("Letter Template (v1) created.");
 
     // 6.5. 🔴 TAMBAHAN: Create Document Template for Surat Rekomendasi Beasiswa
-    const srbDocumentTemplate = await prisma.documentTemplate.create({
-        data: {
+    const srbDocumentTemplate = await prisma.documentTemplate.upsert({
+        where: {
+            name_version: {
+                name: "Surat Rekomendasi Beasiswa",
+                version: "v1",
+            },
+        },
+        update: {},
+        create: {
             name: "Surat Rekomendasi Beasiswa",
             description:
                 "Template Word untuk surat rekomendasi beasiswa dengan sistem variable substitution",
@@ -522,8 +545,15 @@ async function main() {
     ];
 
     for (const variable of templateVariables) {
-        await prisma.templateVariable.create({
-            data: {
+        await prisma.templateVariable.upsert({
+            where: {
+                templateId_variableName: {
+                    templateId: srbDocumentTemplate.id,
+                    variableName: variable.name,
+                },
+            },
+            update: {},
+            create: {
                 templateId: srbDocumentTemplate.id,
                 variableName: variable.name,
                 variableType: variable.type,

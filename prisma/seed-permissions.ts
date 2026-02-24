@@ -267,6 +267,120 @@ const rolePermissions: RolePermissions[] = [
             },
         ],
     },
+    {
+        roleName: "SUPER_ADMIN",
+        permissions: [
+            // User Management
+            {
+                resource: "user",
+                action: "create",
+                description: "Create new users",
+            },
+            {
+                resource: "user",
+                action: "read:all",
+                description: "View all users across system",
+            },
+            {
+                resource: "user",
+                action: "update:all",
+                description: "Update any user profile",
+            },
+            {
+                resource: "user",
+                action: "delete",
+                description: "Delete users",
+            },
+            {
+                resource: "user",
+                action: "toggle:status",
+                description: "Activate/deactivate user accounts",
+            },
+            // Role Management
+            {
+                resource: "role",
+                action: "read:all",
+                description: "View all roles and permissions",
+            },
+            {
+                resource: "role",
+                action: "assign",
+                description: "Assign roles to users",
+            },
+            {
+                resource: "role",
+                action: "revoke",
+                description: "Remove roles from users",
+            },
+            // Password Management
+            {
+                resource: "password",
+                action: "reset",
+                description: "Reset user passwords",
+            },
+            // Master Data Management
+            {
+                resource: "department",
+                action: "manage",
+                description: "Full CRUD for departments",
+            },
+            {
+                resource: "prodi",
+                action: "manage",
+                description: "Full CRUD for program studi",
+            },
+            // System Monitoring
+            {
+                resource: "system",
+                action: "audit",
+                description: "View system audit logs",
+            },
+            {
+                resource: "system",
+                action: "config",
+                description: "Manage system configuration",
+            },
+            {
+                resource: "system",
+                action: "stats",
+                description: "View system statistics",
+            },
+            // Document Management
+            {
+                resource: "document",
+                action: "cleanup",
+                description: "Clean up old/orphaned documents",
+            },
+            // Letter Management (full access)
+            {
+                resource: "letter",
+                action: "read:all",
+                description: "View all letters across system",
+            },
+            {
+                resource: "letter",
+                action: "read:archive",
+                description: "View archived letters",
+            },
+            // Notification
+            {
+                resource: "notification",
+                action: "read:own",
+                description: "Read own notifications",
+            },
+            // Profile
+            {
+                resource: "profile",
+                action: "read:own",
+                description: "View own profile",
+            },
+            {
+                resource: "profile",
+                action: "update:own",
+                description: "Update own profile",
+            },
+        ],
+    },
 ];
 
 export async function seedPermissions() {
