@@ -1,93 +1,111 @@
 import { Elysia } from "elysia";
 import { auth } from "@backend/lib/auth.ts";
 import { checkPermission, getUserRoles } from "@backend/lib/casbin.ts";
+import { Prisma } from "@backend/db/index.ts";
 
 export interface PermissionProps {
-	resource: string;
-	action: string;
+    resource: string;
+    action: string;
 }
 
 export interface RequiredRoleProps {
-	requiredRole: string;
+    requiredRole: string;
 }
 
 /* ---------- authGuardPlugin ---------- */
 export const authGuardPlugin = new Elysia({
-	name: "auth",
+    name: "auth",
 })
-	.mount(auth.handler)
-	.resolve(async ({ status, request: { headers } }) => {
-		const session = await auth.api.getSession({ headers });
+    .mount(auth.handler)
+    .resolve(async ({ status, request: { headers } }) => {
+        const session = await auth.api.getSession({ headers });
 
-		if (!session) return status(401);
+        if (!session) return status(401);
 
-		return {
-			user: session.user,
-			session: session.session,
-		};
-	})
-	.macro({
-		permission: ({ resource, action }: PermissionProps) => {
-			return {
-				async resolve({ status, user }) {
-					if (!user) {
-						return status(401, {
-							error: "Unauthorized",
-							message: "Authentication required",
-						});
-					}
+        // Check if user is still active (not deactivated)
+        const user = await Prisma.user.findUnique({
+            where: { id: session.user.id },
+            select: { emailVerified: true, email: true },
+        });
 
-					const hasPermission = await checkPermission(
-						user.id,
-						resource,
-						action,
-					);
+        if (!user || !user.emailVerified) {
+            console.log(
+                `[Auth Guard] Blocked request from deactivated user: ${user?.email || session.user.email}`,
+            );
+            return status(403, {
+                error: "Account Deactivated",
+                message:
+                    "Your account has been deactivated. Please contact administrator.",
+            });
+        }
 
-					if (!hasPermission) {
-						const roles = await getUserRoles(user.id);
-						return status(403, {
-							error: "Forbidden",
-							message: `You don't have permission to ${action} ${resource}`,
-							userRoles: roles,
-						});
-					}
+        return {
+            user: session.user,
+            session: session.session,
+        };
+    })
+    .macro({
+        permission: ({ resource, action }: PermissionProps) => {
+            return {
+                async resolve({ status, user }) {
+                    if (!user) {
+                        return status(401, {
+                            error: "Unauthorized",
+                            message: "Authentication required",
+                        });
+                    }
 
-					return { user };
-				},
-			};
-		},
+                    const hasPermission = await checkPermission(
+                        user.id,
+                        resource,
+                        action,
+                    );
 
-		role: ({ requiredRole }: RequiredRoleProps) => {
-			return {
-				async resolve({ status, user }) {
-					if (!user) {
-						return status(401, {
-							error: "Unauthorized",
-							message: "Authentication required",
-						});
-					}
+                    if (!hasPermission) {
+                        const roles = await getUserRoles(user.id);
+                        return status(403, {
+                            error: "Forbidden",
+                            message: `You don't have permission to ${action} ${resource}`,
+                            userRoles: roles,
+                        });
+                    }
 
-					const roles = await getUserRoles(user.id);
+                    return { user };
+                },
+            };
+        },
 
-					if (!roles.includes(requiredRole)) {
-						return status(403, {
-							error: "Forbidden",
-							message: `Role '${requiredRole}' required`,
-							userRoles: roles,
-						});
-					}
-					return { user };
-				},
-			};
-		},
-	})
-	.as("scoped");
+        role: ({ requiredRole }: RequiredRoleProps) => {
+            return {
+                async resolve({ status, user }) {
+                    if (!user) {
+                        return status(401, {
+                            error: "Unauthorized",
+                            message: "Authentication required",
+                        });
+                    }
+
+                    const roles = await getUserRoles(user.id);
+
+                    if (!roles.includes(requiredRole)) {
+                        return status(403, {
+                            error: "Forbidden",
+                            message: `Role '${requiredRole}' required`,
+                            userRoles: roles,
+                        });
+                    }
+                    return { user };
+                },
+            };
+        },
+    })
+    .as("scoped");
 
 /* ---------- helper functions ---------- */
 export const requirePermission = (resource: string, action: string) => ({
-	permission: { resource, action },
+    permission: { resource, action },
 });
 
 export const requireRole = (role: string) => ({
-	role: { requiredRole: role },
+    role: { requiredRole: role },
 });
