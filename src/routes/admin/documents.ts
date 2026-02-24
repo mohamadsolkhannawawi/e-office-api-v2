@@ -1,44 +1,59 @@
 import { Elysia, t } from "elysia";
+import {
+    authGuardPlugin,
+    requirePermission,
+} from "@backend/middlewares/auth.ts";
 import { DocumentCleanupService } from "../../services/DocumentCleanupService.js";
 
 /**
  * Admin routes untuk cleanup dan monitoring dokumen
  */
 const documentAdminRoute = new Elysia({ prefix: "/admin/documents" })
+    .use(authGuardPlugin)
 
     // Get file statistics
-    .get("/statistics", async () => {
-        try {
-            const stats = await DocumentCleanupService.getFileStatistics();
+    .get(
+        "/statistics",
+        async () => {
+            try {
+                const stats = await DocumentCleanupService.getFileStatistics();
 
-            return {
-                success: true,
-                data: {
-                    ...stats,
-                    totalSizeMB: (stats.totalSizeBytes / (1024 * 1024)).toFixed(
-                        2,
-                    ),
-                    duplicateInstances: Object.entries(
-                        stats.filesByLetterInstance,
-                    )
-                        .filter(([_, count]) => count > 2) // More than 1 DOCX + 1 PDF
-                        .reduce(
-                            (acc, [id, count]) => ({
-                                ...acc,
-                                [id]: count,
-                            }),
-                            {} as Record<string, number>,
-                        ),
-                },
-            };
-        } catch (error) {
-            console.error("Error getting file statistics:", error);
-            return {
-                success: false,
-                error: error instanceof Error ? error.message : "Unknown error",
-            };
-        }
-    })
+                return {
+                    success: true,
+                    data: {
+                        ...stats,
+                        totalSizeMB: (
+                            stats.totalSizeBytes /
+                            (1024 * 1024)
+                        ).toFixed(2),
+                        duplicateInstances: Object.entries(
+                            stats.filesByLetterInstance,
+                        )
+                            .filter(([_, count]) => count > 2) // More than 1 DOCX + 1 PDF
+                            .reduce(
+                                (acc, [id, count]) => ({
+                                    ...acc,
+                                    [id]: count,
+                                }),
+                                {} as Record<string, number>,
+                            ),
+                    },
+                };
+            } catch (error) {
+                console.error("Error getting file statistics:", error);
+                return {
+                    success: false,
+                    error:
+                        error instanceof Error
+                            ? error.message
+                            : "Unknown error",
+                };
+            }
+        },
+        {
+            ...requirePermission("document", "cleanup"),
+        },
+    )
 
     // Clean up old documents for specific letter instance
     .post(
@@ -78,6 +93,7 @@ const documentAdminRoute = new Elysia({ prefix: "/admin/documents" })
             }
         },
         {
+            ...requirePermission("document", "cleanup"),
             params: t.Object({
                 letterInstanceId: t.String(),
             }),
@@ -85,119 +101,141 @@ const documentAdminRoute = new Elysia({ prefix: "/admin/documents" })
     )
 
     // Clean up all old documents, keep only latest for each letter instance
-    .post("/cleanup-all", async () => {
-        try {
-            console.log(
-                "🧹 [Bulk Cleanup] Starting cleanup for all letter instances",
-            );
+    .post(
+        "/cleanup-all",
+        async () => {
+            try {
+                console.log(
+                    "🧹 [Bulk Cleanup] Starting cleanup for all letter instances",
+                );
 
-            const statsBefore =
-                await DocumentCleanupService.getFileStatistics();
-            let cleanupCount = 0;
+                const statsBefore =
+                    await DocumentCleanupService.getFileStatistics();
+                let cleanupCount = 0;
 
-            // Get all letter instances that have files
-            for (const letterInstanceId of Object.keys(
-                statsBefore.filesByLetterInstance,
-            )) {
-                const fileCount =
-                    statsBefore.filesByLetterInstance[letterInstanceId];
-                if (fileCount && fileCount > 2) {
-                    // More than 1 DOCX + 1 PDF
-                    await DocumentCleanupService.cleanupKeepLatest(
-                        letterInstanceId,
-                    );
-                    cleanupCount++;
+                // Get all letter instances that have files
+                for (const letterInstanceId of Object.keys(
+                    statsBefore.filesByLetterInstance,
+                )) {
+                    const fileCount =
+                        statsBefore.filesByLetterInstance[letterInstanceId];
+                    if (fileCount && fileCount > 2) {
+                        // More than 1 DOCX + 1 PDF
+                        await DocumentCleanupService.cleanupKeepLatest(
+                            letterInstanceId,
+                        );
+                        cleanupCount++;
+                    }
                 }
+
+                const statsAfter =
+                    await DocumentCleanupService.getFileStatistics();
+
+                return {
+                    success: true,
+                    data: {
+                        message: "Bulk cleanup completed",
+                        cleanupCount,
+                        before: {
+                            totalFiles: statsBefore.totalFiles,
+                            totalSizeMB: (
+                                statsBefore.totalSizeBytes /
+                                (1024 * 1024)
+                            ).toFixed(2),
+                        },
+                        after: {
+                            totalFiles: statsAfter.totalFiles,
+                            totalSizeMB: (
+                                statsAfter.totalSizeBytes /
+                                (1024 * 1024)
+                            ).toFixed(2),
+                        },
+                        saved: {
+                            files:
+                                statsBefore.totalFiles - statsAfter.totalFiles,
+                            sizeMB: (
+                                (statsBefore.totalSizeBytes -
+                                    statsAfter.totalSizeBytes) /
+                                (1024 * 1024)
+                            ).toFixed(2),
+                        },
+                    },
+                };
+            } catch (error) {
+                console.error("Error during bulk cleanup:", error);
+                return {
+                    success: false,
+                    error:
+                        error instanceof Error
+                            ? error.message
+                            : "Unknown error",
+                };
             }
-
-            const statsAfter = await DocumentCleanupService.getFileStatistics();
-
-            return {
-                success: true,
-                data: {
-                    message: "Bulk cleanup completed",
-                    cleanupCount,
-                    before: {
-                        totalFiles: statsBefore.totalFiles,
-                        totalSizeMB: (
-                            statsBefore.totalSizeBytes /
-                            (1024 * 1024)
-                        ).toFixed(2),
-                    },
-                    after: {
-                        totalFiles: statsAfter.totalFiles,
-                        totalSizeMB: (
-                            statsAfter.totalSizeBytes /
-                            (1024 * 1024)
-                        ).toFixed(2),
-                    },
-                    saved: {
-                        files: statsBefore.totalFiles - statsAfter.totalFiles,
-                        sizeMB: (
-                            (statsBefore.totalSizeBytes -
-                                statsAfter.totalSizeBytes) /
-                            (1024 * 1024)
-                        ).toFixed(2),
-                    },
-                },
-            };
-        } catch (error) {
-            console.error("Error during bulk cleanup:", error);
-            return {
-                success: false,
-                error: error instanceof Error ? error.message : "Unknown error",
-            };
-        }
-    })
+        },
+        {
+            ...requirePermission("document", "cleanup"),
+        },
+    )
 
     // Clean up orphaned files (files without database records)
-    .post("/cleanup-orphaned", async () => {
-        try {
-            console.log(
-                "🧹 [Orphaned Cleanup] Starting cleanup of orphaned files",
-            );
+    .post(
+        "/cleanup-orphaned",
+        async () => {
+            try {
+                console.log(
+                    "🧹 [Orphaned Cleanup] Starting cleanup of orphaned files",
+                );
 
-            const statsBefore =
-                await DocumentCleanupService.getFileStatistics();
-            await DocumentCleanupService.cleanupOrphanedFiles();
-            const statsAfter = await DocumentCleanupService.getFileStatistics();
+                const statsBefore =
+                    await DocumentCleanupService.getFileStatistics();
+                await DocumentCleanupService.cleanupOrphanedFiles();
+                const statsAfter =
+                    await DocumentCleanupService.getFileStatistics();
 
-            return {
-                success: true,
-                data: {
-                    message: "Orphaned files cleanup completed",
-                    before: {
-                        totalFiles: statsBefore.totalFiles,
-                        totalSizeMB: (
-                            statsBefore.totalSizeBytes /
-                            (1024 * 1024)
-                        ).toFixed(2),
+                return {
+                    success: true,
+                    data: {
+                        message: "Orphaned files cleanup completed",
+                        before: {
+                            totalFiles: statsBefore.totalFiles,
+                            totalSizeMB: (
+                                statsBefore.totalSizeBytes /
+                                (1024 * 1024)
+                            ).toFixed(2),
+                        },
+                        after: {
+                            totalFiles: statsAfter.totalFiles,
+                            totalSizeMB: (
+                                statsAfter.totalSizeBytes /
+                                (1024 * 1024)
+                            ).toFixed(2),
+                        },
+                        removed: {
+                            files:
+                                statsBefore.totalFiles - statsAfter.totalFiles,
+                            sizeMB: (
+                                (statsBefore.totalSizeBytes -
+                                    statsAfter.totalSizeBytes) /
+                                (1024 * 1024)
+                            ).toFixed(2),
+                        },
                     },
-                    after: {
-                        totalFiles: statsAfter.totalFiles,
-                        totalSizeMB: (
-                            statsAfter.totalSizeBytes /
-                            (1024 * 1024)
-                        ).toFixed(2),
-                    },
-                    removed: {
-                        files: statsBefore.totalFiles - statsAfter.totalFiles,
-                        sizeMB: (
-                            (statsBefore.totalSizeBytes -
-                                statsAfter.totalSizeBytes) /
-                            (1024 * 1024)
-                        ).toFixed(2),
-                    },
-                },
-            };
-        } catch (error) {
-            console.error("Error during orphaned cleanup:", error);
-            return {
-                success: false,
-                error: error instanceof Error ? error.message : "Unknown error",
-            };
-        }
-    })
+                };
+            } catch (error) {
+                console.error("Error during orphaned cleanup:", error);
+                return {
+                    success: false,
+                    error:
+                        error instanceof Error
+                            ? error.message
+                            : "Unknown error",
+                };
+            }
+        },
+        {
+            ...requirePermission("document", "cleanup"),
+        },
+    )
 
     // Test cleanup dry-run - show what would be cleaned up
     .get(
@@ -248,6 +286,7 @@ const documentAdminRoute = new Elysia({ prefix: "/admin/documents" })
             }
         },
         {
+            ...requirePermission("document", "cleanup"),
             params: t.Object({
                 letterInstanceId: t.String(),
             }),
@@ -255,28 +294,37 @@ const documentAdminRoute = new Elysia({ prefix: "/admin/documents" })
     )
 
     // Clean up temporary files in uploads/temp folder
-    .post("/cleanup-temp", async () => {
-        try {
-            console.log("🧹 [Admin] Starting manual temp cleanup");
+    .post(
+        "/cleanup-temp",
+        async () => {
+            try {
+                console.log("🧹 [Admin] Starting manual temp cleanup");
 
-            const statsBefore =
-                await DocumentCleanupService.getFileStatistics();
-            await DocumentCleanupService.cleanupTempFiles();
+                const statsBefore =
+                    await DocumentCleanupService.getFileStatistics();
+                await DocumentCleanupService.cleanupTempFiles();
 
-            return {
-                success: true,
-                data: {
-                    message: "Temp files cleanup completed",
-                    timestamp: new Date().toISOString(),
-                },
-            };
-        } catch (error) {
-            console.error("Error during temp cleanup:", error);
-            return {
-                success: false,
-                error: error instanceof Error ? error.message : "Unknown error",
-            };
-        }
-    });
+                return {
+                    success: true,
+                    data: {
+                        message: "Temp files cleanup completed",
+                        timestamp: new Date().toISOString(),
+                    },
+                };
+            } catch (error) {
+                console.error("Error during temp cleanup:", error);
+                return {
+                    success: false,
+                    error:
+                        error instanceof Error
+                            ? error.message
+                            : "Unknown error",
+                };
+            }
+        },
+        {
+            ...requirePermission("document", "cleanup"),
+        },
+    );
 
 export default documentAdminRoute;
