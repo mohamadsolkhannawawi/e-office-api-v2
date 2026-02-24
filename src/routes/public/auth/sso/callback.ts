@@ -56,6 +56,17 @@ export default new Elysia().get(
             },
         });
 
+        // Check if user is deactivated
+        if (user && !user.emailVerified) {
+            console.log(
+                `[SSO] Blocked login attempt for deactivated user: ${user.email}`,
+            );
+            set.status = 403;
+            return {
+                error: "Account has been deactivated. Please contact administrator.",
+            };
+        }
+
         console.log("user local =>", user);
 
         // Register user to application if not found
@@ -64,6 +75,7 @@ export default new Elysia().get(
                 const dataUser = {
                     name: response.data.user.name,
                     email: response.data.user.username,
+                    emailVerified: true, // SSO users are auto-verified
                     createdAt: new Date(),
                     updatedAt: new Date(),
                 };
