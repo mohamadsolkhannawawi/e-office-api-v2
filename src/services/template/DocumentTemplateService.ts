@@ -30,8 +30,8 @@ export const IMAGE_SIZE_CONFIG = {
     },
     // QR Code: 3cm x 3cm (square)
     qrCode: {
-        width: 113, // 3cm at 96 DPI
-        height: 113, // 3cm at 96 DPI
+        width: 37.8, // 3cm at 96 DPI
+        height: 37.8, // 3cm at 96 DPI
     },
     // Default for unknown images
     default: {
