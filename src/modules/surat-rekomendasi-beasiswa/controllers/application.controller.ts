@@ -1946,4 +1946,148 @@ export class ApplicationController {
             };
         }
     }
+
+    /**
+     * Staff (Supervisor Akademik / Manajer TU) edit application data.
+     * Records the action as "staff_revision" in history while keeping
+     * the letter at the same step/status so it remains in their queue.
+     */
+    static async staffEditApplication({
+        params,
+        body,
+        set,
+        user,
+    }: {
+        params: any;
+        body: any;
+        set: any;
+        user: any;
+    }) {
+        try {
+            const { applicationId } = params;
+            const { namaBeasiswa, values, catatan } = body;
+
+            if (!ApplicationController.validateUserAuth(user, set)) {
+                return {
+                    error: "Authentication required",
+                    requiresLogin: true,
+                };
+            }
+
+            // Determine allowed roles and their step
+            const userRoles: string[] = Array.isArray(user.roles)
+                ? user.roles
+                : [user.role].filter(Boolean);
+            const isSupervisor = userRoles.some(
+                (r: string) => r.toUpperCase() === "SUPERVISOR",
+            );
+            const isManajerTU = userRoles.some(
+                (r: string) => r.toUpperCase() === "MANAJER_TU",
+            );
+
+            if (!isSupervisor && !isManajerTU) {
+                set.status = 403;
+                return {
+                    error: "Forbidden: Only Supervisor Akademik or Manajer TU can perform this action.",
+                };
+            }
+
+            const expectedStep = isSupervisor ? 1 : 2;
+
+            const existing =
+                await ApplicationService.getApplicationById(applicationId);
+            if (!existing) {
+                set.status = 404;
+                return { error: "Application not found" };
+            }
+
+            // Must be at the correct step for this role
+            if (existing.currentStep !== expectedStep) {
+                set.status = 422;
+                return {
+                    error: `Tidak dapat mengedit: surat tidak berada di tahap ${isSupervisor ? "Supervisor Akademik" : "Manajer TU"}.`,
+                };
+            }
+
+            // Must not be in a terminal state
+            if (
+                existing.status === "COMPLETED" ||
+                existing.status === "REJECTED"
+            ) {
+                set.status = 422;
+                return {
+                    error: "Tidak dapat mengedit: surat sudah selesai atau ditolak.",
+                };
+            }
+
+            // Merge updated values with existing values
+            const currentValues = (existing.values as any) || {};
+            const mergedValues = values
+                ? { ...currentValues, ...values }
+                : currentValues;
+
+            // Update data fields without changing status/step/role
+            await db.letterInstance.update({
+                where: { id: applicationId },
+                data: {
+                    scholarshipName:
+                        namaBeasiswa !== undefined
+                            ? namaBeasiswa
+                            : existing.scholarshipName,
+                    values: mergedValues,
+                },
+            });
+
+            // Create staff revision history entry
+            const roleName = isSupervisor
+                ? "Supervisor Akademik"
+                : "Manajer TU";
+            const historyNote = catatan
+                ? `Edit data surat oleh ${roleName}: ${catatan}`
+                : `Data surat diperbarui oleh ${roleName}`;
+
+            await db.letterHistory.create({
+                data: {
+                    letterInstanceId: applicationId,
+                    actorId: user.id,
+                    action: "staff_revision",
+                    note: historyNote,
+                    status: existing.status as any,
+                    roleId: user.roleId || null,
+                },
+            });
+
+            // Auto-regenerate template
+            try {
+                ApplicationController.autoGenerateTemplate(
+                    applicationId,
+                    applicationId,
+                ).catch((err) =>
+                    console.error(
+                        "❌ [staffEditApplication] Template regen failed:",
+                        err,
+                    ),
+                );
+            } catch (genError) {
+                console.error(
+                    "❌ [staffEditApplication] Failed to trigger template generation:",
+                    genError,
+                );
+            }
+
+            return {
+                success: true,
+                message: "Data surat berhasil diperbarui.",
+            };
+        } catch (error) {
+            console.error("staffEditApplication error:", error);
+            set.status = 500;
+            return {
+                error:
+                    error instanceof Error
+                        ? error.message
+                        : "Internal server error",
+            };
+        }
+    }
 }
