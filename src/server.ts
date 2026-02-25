@@ -13,6 +13,7 @@ import letterNumberRoutes from "./routes/master/letterNumber.ts";
 import letterNumberingRoutes from "./routes/master/letterNumbering.ts";
 import { templatesRoute } from "./routes/templates/index.ts"; // 🔴 TAMBAHAN
 import documentAdminRoute from "./routes/admin/documents.ts"; // 🔴 TAMBAHAN: Admin routes
+import userRoutes from "./routes/user/index.ts"; // User self-service routes
 
 import { PrismaClient } from "@backend/db/index.ts";
 
@@ -277,6 +278,7 @@ export const app = new Elysia()
             .use(stampRoutes)
             .use(templatesRoute) // 🔴 TAMBAHAN: Template routes
             .use(documentAdminRoute) // 🔴 TAMBAHAN: Admin document cleanup routes
+            .use(userRoutes) // User self-service routes
             .group("/master", (master) =>
                 master.use(letterNumberRoutes).use(letterNumberingRoutes),
             ),
