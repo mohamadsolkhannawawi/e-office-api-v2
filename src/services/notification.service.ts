@@ -27,7 +27,7 @@ interface CreateNotificationParams {
  */
 export function formatRoleName(roleName: string | null | undefined): string {
     if (!roleName) return "Sistem";
-    
+
     const roleMap: Record<string, string> = {
         SUPERVISOR: "Supervisor Akademik",
         MANAJER_TU: "Manajer TU",
@@ -41,7 +41,7 @@ export function formatRoleName(roleName: string | null | undefined): string {
         upa: "Staff UPA",
         mahasiswa: "Mahasiswa",
     };
-    
+
     return roleMap[roleName] || roleName;
 }
 
@@ -227,8 +227,13 @@ export async function notifyNewTask(params: {
     applicantName: string;
     fromRole?: string;
 }) {
-    const { reviewerUserIds, applicationId, scholarshipName, applicantName, fromRole } =
-        params;
+    const {
+        reviewerUserIds,
+        applicationId,
+        scholarshipName,
+        applicantName,
+        fromRole,
+    } = params;
 
     const friendlyFromRole = formatRoleName(fromRole);
     const notifications = await Promise.all(
@@ -236,10 +241,45 @@ export async function notifyNewTask(params: {
             createNotification({
                 userId,
                 title: "Pengajuan Baru",
-                message: fromRole 
+                message: fromRole
                     ? `Pengajuan ${scholarshipName} dari ${applicantName} telah disetujui oleh ${friendlyFromRole} dan memerlukan persetujuan Anda.`
                     : `Pengajuan ${scholarshipName} dari ${applicantName} memerlukan persetujuan Anda.`,
                 type: "NEW_TASK",
+                entityId: applicationId,
+                letterInstanceId: applicationId,
+            }),
+        ),
+    );
+
+    return notifications;
+}
+
+/**
+ * Notify supervisors that student self-edited a pending letter
+ */
+export async function notifyStudentSelfEdit(params: {
+    supervisorUserIds: string[];
+    applicationId: string;
+    scholarshipName: string;
+    applicantName: string;
+}) {
+    const { supervisorUserIds, applicationId, scholarshipName, applicantName } =
+        params;
+
+    if (!supervisorUserIds || supervisorUserIds.length === 0) {
+        console.warn(
+            "⚠️ [notifyStudentSelfEdit] No supervisor user IDs provided",
+        );
+        return [];
+    }
+
+    const notifications = await Promise.all(
+        supervisorUserIds.map((userId) =>
+            createNotification({
+                userId,
+                title: "Surat Direvisi Mandiri oleh Mahasiswa",
+                message: `${applicantName} telah melakukan revisi mandiri pada pengajuan surat rekomendasi beasiswa "${scholarshipName}" sebelum mendapat tindakan Anda. Silakan tinjau kembali.`,
+                type: "APPLICATION_SUBMITTED",
                 entityId: applicationId,
                 letterInstanceId: applicationId,
             }),
@@ -259,8 +299,13 @@ export async function notifyApplicationSubmitted(params: {
     applicantName: string;
     isResubmission?: boolean;
 }) {
-    const { supervisorUserIds, applicationId, scholarshipName, applicantName, isResubmission } =
-        params;
+    const {
+        supervisorUserIds,
+        applicationId,
+        scholarshipName,
+        applicantName,
+        isResubmission,
+    } = params;
 
     console.log("🔔 [notifyApplicationSubmitted] Called with:", {
         supervisorUserIds,
@@ -283,7 +328,9 @@ export async function notifyApplicationSubmitted(params: {
             `🔔 [notifyApplicationSubmitted] Creating ${supervisorUserIds.length} notifications...`,
         );
 
-        const title = isResubmission ? "Pengajuan Revisi Masuk" : "Pengajuan Baru Masuk";
+        const title = isResubmission
+            ? "Pengajuan Revisi Masuk"
+            : "Pengajuan Baru Masuk";
         const message = isResubmission
             ? `${applicantName} telah mengirim ulang pengajuan surat rekomendasi beasiswa ${scholarshipName} setelah revisi. Silakan tinjau dan berikan persetujuan.`
             : `${applicantName} telah mengajukan surat rekomendasi beasiswa ${scholarshipName}. Silakan tinjau dan berikan persetujuan.`;
@@ -337,11 +384,13 @@ export async function notifyApplicationReadyForReview(params: {
         isRevision,
     } = params;
 
-    const friendlyCurrentRole = formatRoleName(currentRoleName.replace(" (Revisi)", ""));
-    
+    const friendlyCurrentRole = formatRoleName(
+        currentRoleName.replace(" (Revisi)", ""),
+    );
+
     let title: string;
     let message: string;
-    
+
     if (isRevision) {
         title = "Revisi Menunggu Tindakan Anda";
         message = `Surat rekomendasi beasiswa ${scholarshipName} dari ${applicantName} memerlukan revisi Anda. Diminta oleh ${friendlyCurrentRole}.`;
@@ -385,7 +434,7 @@ export async function notifyApplicationRejected(params: {
     } = params;
 
     const friendlyRoleName = formatRoleName(rejectedByRole);
-    
+
     let message = `Pengajuan surat rekomendasi beasiswa ${scholarshipName} Anda telah ditolak`;
     if (friendlyRoleName) {
         message += ` oleh ${friendlyRoleName}`;
@@ -533,7 +582,13 @@ export async function notifyApprovalProgress(params: {
     approvedByRole: string;
     nextRole?: string;
 }) {
-    const { applicantUserId, applicationId, scholarshipName, approvedByRole, nextRole } = params;
+    const {
+        applicantUserId,
+        applicationId,
+        scholarshipName,
+        approvedByRole,
+        nextRole,
+    } = params;
 
     const friendlyApprovedBy = formatRoleName(approvedByRole);
     const friendlyNextRole = formatRoleName(nextRole);
