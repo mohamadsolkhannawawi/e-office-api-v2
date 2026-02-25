@@ -234,6 +234,34 @@ const suratRekomendasiRoutes = new Elysia({
         },
     )
     .get("/stats", ApplicationController.getStats)
+    .post(
+        "/applications/:applicationId/student-edit",
+        ApplicationController.studentEditApplication,
+        {
+            params: t.Object({
+                applicationId: t.String(),
+            }),
+            body: t.Object({
+                namaBeasiswa: t.Optional(t.String()),
+                values: t.Optional(t.Any()),
+                catatan: t.Optional(t.String()),
+            }),
+        },
+    )
+    .post(
+        "/applications/:applicationId/staff-edit",
+        ApplicationController.staffEditApplication,
+        {
+            params: t.Object({
+                applicationId: t.String(),
+            }),
+            body: t.Object({
+                namaBeasiswa: t.Optional(t.String()),
+                values: t.Optional(t.Any()),
+                catatan: t.Optional(t.String()),
+            }),
+        },
+    )
     .delete(
         "/applications/:applicationId",
         ApplicationController.deleteApplication,

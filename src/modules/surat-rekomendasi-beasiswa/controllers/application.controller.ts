@@ -18,6 +18,7 @@ import {
     notifyApplicationPublished,
     notifyRevisionToRole,
     notifyApprovalProgress,
+    notifyStudentSelfEdit,
     formatRoleName,
 } from "../../../services/notification.service.ts";
 import { config } from "../../../config.ts";
@@ -1789,6 +1790,304 @@ export class ApplicationController {
             console.error("Save signature error:", error);
             set.status = 500;
             return { error: "Failed to save signature" };
+        }
+    }
+
+    /**
+     * Mahasiswa self-edit a PENDING letter before Supervisor Akademik takes any action.
+     * Creates a history entry with action="student_revision" so all roles can see it in
+     * the letter history when the letter progresses through the workflow.
+     */
+    static async studentEditApplication({
+        params,
+        body,
+        set,
+        user,
+    }: {
+        params: any;
+        body: any;
+        set: any;
+        user: any;
+    }) {
+        try {
+            const { applicationId } = params;
+            const { namaBeasiswa, values, catatan } = body;
+
+            if (!ApplicationController.validateUserAuth(user, set)) {
+                return {
+                    error: "Authentication required",
+                    requiresLogin: true,
+                };
+            }
+
+            const existing =
+                await ApplicationService.getApplicationById(applicationId);
+            if (!existing) {
+                set.status = 404;
+                return { error: "Application not found" };
+            }
+            if (existing.createdById !== user.id) {
+                set.status = 403;
+                return { error: "Forbidden: You do not own this application" };
+            }
+
+            // Only allow if status is PENDING and at step 1 (Supervisor has not acted)
+            if (existing.status !== "PENDING" || existing.currentStep !== 1) {
+                set.status = 422;
+                return {
+                    error: "Tidak dapat mengedit: surat sudah mendapat tindakan dari Supervisor Akademik atau bukan dalam status PENDING.",
+                };
+            }
+
+            // Also verify no Supervisor history entry exists yet
+            const supervisorRole = await db.role.findUnique({
+                where: { name: "SUPERVISOR" },
+            });
+            if (supervisorRole) {
+                const supervisorHistory = await db.letterHistory.findFirst({
+                    where: {
+                        letterInstanceId: applicationId,
+                        roleId: supervisorRole.id,
+                    },
+                });
+                if (supervisorHistory) {
+                    set.status = 422;
+                    return {
+                        error: "Tidak dapat mengedit: Supervisor Akademik sudah melakukan tindakan pada surat ini.",
+                    };
+                }
+            }
+
+            // Update letter data while keeping status=PENDING/step=1/currentRoleId=supervisor
+            await ApplicationService.updateApplicationData(applicationId, {
+                namaBeasiswa: namaBeasiswa,
+                values: values,
+                status: "PENDING",
+                currentStep: 1,
+                currentRoleId: supervisorRole?.id || existing.currentRoleId,
+            });
+
+            // Create history entry for student self-revision
+            const historyNote = catatan
+                ? `Revisi Mandiri oleh Mahasiswa: ${catatan}`
+                : "Revisi Mandiri oleh Mahasiswa sebelum tindakan Supervisor Akademik";
+
+            await db.letterHistory.create({
+                data: {
+                    letterInstanceId: applicationId,
+                    actorId: user.id,
+                    action: "student_revision",
+                    note: historyNote,
+                    status: "PENDING",
+                    roleId: null, // Mahasiswa has no roleId
+                },
+            });
+
+            // Notify supervisors about the student's self-edit
+            try {
+                const supervisors = await db.userRole.findMany({
+                    where: { role: { name: "SUPERVISOR" } },
+                    include: { user: true },
+                });
+                const supervisorUserIds = supervisors
+                    .map((ur) => ur.user.id)
+                    .filter((id) => id !== user.id);
+
+                if (supervisorUserIds.length > 0) {
+                    await notifyStudentSelfEdit({
+                        supervisorUserIds,
+                        applicationId,
+                        scholarshipName:
+                            namaBeasiswa || existing.scholarshipName || "",
+                        applicantName: user.name || "Mahasiswa",
+                    });
+                    console.log(
+                        `🔔 [studentEditApplication] Notified ${supervisorUserIds.length} supervisors`,
+                    );
+                }
+            } catch (notifyError) {
+                console.error(
+                    "❌ [studentEditApplication] Notification error:",
+                    notifyError,
+                );
+            }
+
+            // Auto-regenerate template
+            try {
+                ApplicationController.autoGenerateTemplate(
+                    applicationId,
+                    applicationId,
+                ).catch((err) =>
+                    console.error(
+                        "❌ [studentEditApplication] Template regen failed:",
+                        err,
+                    ),
+                );
+            } catch (genError) {
+                console.error(
+                    "❌ [studentEditApplication] Failed to trigger template generation:",
+                    genError,
+                );
+            }
+
+            return {
+                success: true,
+                message:
+                    "Surat berhasil direvisi dan dikirim ke Supervisor Akademik.",
+            };
+        } catch (error) {
+            console.error("studentEditApplication error:", error);
+            set.status = 500;
+            return {
+                error:
+                    error instanceof Error
+                        ? error.message
+                        : "Internal server error",
+            };
+        }
+    }
+
+    /**
+     * Staff (Supervisor Akademik / Manajer TU) edit application data.
+     * Records the action as "staff_revision" in history while keeping
+     * the letter at the same step/status so it remains in their queue.
+     */
+    static async staffEditApplication({
+        params,
+        body,
+        set,
+        user,
+    }: {
+        params: any;
+        body: any;
+        set: any;
+        user: any;
+    }) {
+        try {
+            const { applicationId } = params;
+            const { namaBeasiswa, values, catatan } = body;
+
+            if (!ApplicationController.validateUserAuth(user, set)) {
+                return {
+                    error: "Authentication required",
+                    requiresLogin: true,
+                };
+            }
+
+            // Determine allowed roles and their step
+            const userRoles: string[] = Array.isArray(user.roles)
+                ? user.roles
+                : [user.role].filter(Boolean);
+            const isSupervisor = userRoles.some(
+                (r: string) => r.toUpperCase() === "SUPERVISOR",
+            );
+            const isManajerTU = userRoles.some(
+                (r: string) => r.toUpperCase() === "MANAJER_TU",
+            );
+
+            if (!isSupervisor && !isManajerTU) {
+                set.status = 403;
+                return {
+                    error: "Forbidden: Only Supervisor Akademik or Manajer TU can perform this action.",
+                };
+            }
+
+            const expectedStep = isSupervisor ? 1 : 2;
+
+            const existing =
+                await ApplicationService.getApplicationById(applicationId);
+            if (!existing) {
+                set.status = 404;
+                return { error: "Application not found" };
+            }
+
+            // Must be at the correct step for this role
+            if (existing.currentStep !== expectedStep) {
+                set.status = 422;
+                return {
+                    error: `Tidak dapat mengedit: surat tidak berada di tahap ${isSupervisor ? "Supervisor Akademik" : "Manajer TU"}.`,
+                };
+            }
+
+            // Must not be in a terminal state
+            if (
+                existing.status === "COMPLETED" ||
+                existing.status === "REJECTED"
+            ) {
+                set.status = 422;
+                return {
+                    error: "Tidak dapat mengedit: surat sudah selesai atau ditolak.",
+                };
+            }
+
+            // Merge updated values with existing values
+            const currentValues = (existing.values as any) || {};
+            const mergedValues = values
+                ? { ...currentValues, ...values }
+                : currentValues;
+
+            // Update data fields without changing status/step/role
+            await db.letterInstance.update({
+                where: { id: applicationId },
+                data: {
+                    scholarshipName:
+                        namaBeasiswa !== undefined
+                            ? namaBeasiswa
+                            : existing.scholarshipName,
+                    values: mergedValues,
+                },
+            });
+
+            // Create staff revision history entry
+            const roleName = isSupervisor
+                ? "Supervisor Akademik"
+                : "Manajer TU";
+            const historyNote = catatan
+                ? `Edit data surat oleh ${roleName}: ${catatan}`
+                : `Data surat diperbarui oleh ${roleName}`;
+
+            await db.letterHistory.create({
+                data: {
+                    letterInstanceId: applicationId,
+                    actorId: user.id,
+                    action: "staff_revision",
+                    note: historyNote,
+                    status: existing.status as any,
+                    roleId: user.roleId || null,
+                },
+            });
+
+            // Auto-regenerate template
+            try {
+                ApplicationController.autoGenerateTemplate(
+                    applicationId,
+                    applicationId,
+                ).catch((err) =>
+                    console.error(
+                        "❌ [staffEditApplication] Template regen failed:",
+                        err,
+                    ),
+                );
+            } catch (genError) {
+                console.error(
+                    "❌ [staffEditApplication] Failed to trigger template generation:",
+                    genError,
+                );
+            }
+
+            return {
+                success: true,
+                message: "Data surat berhasil diperbarui.",
+            };
+        } catch (error) {
+            console.error("staffEditApplication error:", error);
+            set.status = 500;
+            return {
+                error:
+                    error instanceof Error
+                        ? error.message
+                        : "Internal server error",
+            };
         }
     }
 }
