@@ -23,7 +23,11 @@ export const app = new Elysia()
     .use(swagger())
     .use(
         cors({
-            origin: "http://localhost:3000", // Must be specific origin when using credentials
+            origin: env
+                .get("ALLOWED_ORIGINS")
+                .default("http://localhost:3000")
+                .asString()
+                .split(","),
             methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             credentials: true,
             allowedHeaders: ["Content-Type", "Authorization"],
