@@ -21,7 +21,15 @@ const LIBREOFFICE_PATHS = {
         "C:\\Program Files\\LibreOffice\\program\\soffice.exe",
         "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe",
     ],
-    linux: ["/usr/bin/soffice", "/usr/bin/libreoffice"],
+    linux: [
+        // Custom path via env var (for servers without root, e.g. AppImage extracted)
+        process.env.LIBREOFFICE_PATH ?? "",
+        "/usr/bin/soffice",
+        "/usr/bin/libreoffice",
+        // Common extracted AppImage path
+        `${process.env.HOME}/libreoffice/squashfs-root/usr/bin/soffice`,
+        `${process.env.HOME}/squashfs-root/usr/bin/soffice`,
+    ],
     darwin: ["/Applications/LibreOffice.app/Contents/MacOS/soffice"],
 };
 
