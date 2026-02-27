@@ -154,7 +154,7 @@ export class AttachmentService {
                 mimeType: attachment.mimeType,
                 category: attachment.category,
                 attachmentType: attachment.attachmentType,
-                downloadUrl: uploadResult.url, // Pre-signed URL (7 hari)
+                downloadUrl: `/api/surat-rekomendasi/attachments/${attachment.id}/download`,
                 createdAt: attachment.createdAt,
             };
         } catch (error) {
@@ -164,33 +164,22 @@ export class AttachmentService {
     }
 
     /**
-     * Get pre-signed download URL untuk file yang sudah terupload
+     * Get download URL untuk file yang sudah terupload.
+     * Mengembalikan API proxy URL (bukan presigned MinIO URL).
      */
     static async getDownloadUrl(
         attachmentId: string,
-        expirySeconds: number = 3600, // Default 1 hour
+        _expirySeconds: number = 3600,
     ): Promise<string> {
-        try {
-            const attachment = await db.attachment.findUnique({
-                where: { id: attachmentId },
-            });
+        const attachment = await db.attachment.findUnique({
+            where: { id: attachmentId },
+        });
 
-            if (!attachment) {
-                throw new Error(`Attachment ${attachmentId} not found`);
-            }
-
-            // Generate pre-signed URL
-            const url = await MinioService.getPresignedUrl(
-                "surat-rekomendasi-beasiswa",
-                attachment.filename,
-                expirySeconds,
-            );
-
-            return url;
-        } catch (error) {
-            console.error("Get download URL error:", error);
-            throw error;
+        if (!attachment) {
+            throw new Error(`Attachment ${attachmentId} not found`);
         }
+
+        return `/api/surat-rekomendasi/attachments/${attachmentId}/download`;
     }
 
     /**

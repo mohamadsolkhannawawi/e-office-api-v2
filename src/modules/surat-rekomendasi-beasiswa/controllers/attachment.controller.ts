@@ -1,5 +1,7 @@
 import { Prisma } from "../../../db/index.ts";
 import { AttachmentService } from "../services/attachment.service.ts";
+import { MinioService } from "../../../shared/services/minio.service.ts";
+import { Readable } from "node:stream";
 
 const db = Prisma;
 
@@ -149,6 +151,70 @@ export class AttachmentController {
             set.status = 500;
             return {
                 error: error instanceof Error ? error.message : "Delete failed",
+            };
+        }
+    }
+
+    /**
+     * Proxy file dari MinIO ke browser.
+     * Browser tidak bisa akses MinIO langsung (localhost / internal),
+     * jadi file di-stream lewat API server ini.
+     */
+    static async downloadAttachment({
+        params,
+        set,
+    }: {
+        params: any;
+        set: any;
+    }) {
+        try {
+            const { attachmentId } = params;
+
+            const attachment = await db.attachment.findUnique({
+                where: { id: attachmentId },
+            });
+
+            if (!attachment || attachment.deletedAt) {
+                set.status = 404;
+                return { error: "Attachment not found" };
+            }
+
+            // Stream file dari MinIO via internal connection (localhost)
+            const { stat, stream } = await MinioService.getFileStream(
+                attachment.domain,
+            );
+
+            // Set response headers
+            const contentType =
+                attachment.mimeType ||
+                stat.metaData["content-type"] ||
+                "application/octet-stream";
+            const safeFilename = encodeURIComponent(attachment.filename);
+
+            set.headers["content-type"] = contentType;
+            set.headers["content-length"] = String(stat.size);
+            set.headers["content-disposition"] =
+                `inline; filename="${safeFilename}"; filename*=UTF-8''${safeFilename}`;
+            set.headers["cache-control"] = "private, max-age=3600";
+
+            // Convert MinIO stream (Node Readable) to a Web ReadableStream for Elysia
+            return new Response(
+                Readable.toWeb(stream as unknown as Readable) as ReadableStream,
+                {
+                    headers: {
+                        "content-type": contentType,
+                        "content-length": String(stat.size),
+                        "content-disposition": `inline; filename="${safeFilename}"; filename*=UTF-8''${safeFilename}`,
+                        "cache-control": "private, max-age=3600",
+                    },
+                },
+            );
+        } catch (error) {
+            console.error("Download attachment error:", error);
+            set.status = 500;
+            return {
+                error:
+                    error instanceof Error ? error.message : "Download failed",
             };
         }
     }
