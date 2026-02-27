@@ -52,11 +52,8 @@ export default new Elysia()
                 mahasiswaNim: fullUser.mahasiswa?.nim,
             });
 
-            // Rewrite image to proxy URL if it's a stored MinIO object path
-            const imageUrl =
-                fullUser.image && !fullUser.image.startsWith("http")
-                    ? "/api/me/photo"
-                    : (fullUser.image ?? null);
+            // Always rewrite image to proxy URL so clients never reference MinIO directly
+            const imageUrl = fullUser.image ? "/api/me/photo" : null;
 
             return { ...fullUser, image: imageUrl };
         },
@@ -240,15 +237,36 @@ export default new Elysia()
                 return new Response("No profile photo", { status: 404 });
             }
 
-            // Only proxy MinIO object paths (not external http URLs)
+            // If the stored image is an old MinIO presigned/plain HTTP URL,
+            // extract the object path so we can stream it directly (the stored
+            // hostname may be unreachable from the client, e.g. localhost).
+            let objectPath = dbUser.image;
             if (dbUser.image.startsWith("http")) {
-                return Response.redirect(dbUser.image, 302);
+                try {
+                    const parsed = new URL(dbUser.image);
+                    // pathname is "/<bucket>/<object_key...>" — drop leading "/"
+                    // then strip the bucket name prefix
+                    const parts = parsed.pathname.replace(/^\//, "").split("/");
+                    // parts[0] = bucket name, rest = object key
+                    if (parts.length >= 2) {
+                        objectPath = parts.slice(1).join("/");
+                        // Persist the cleaned-up path so future requests skip this step
+                        await db.user.update({
+                            where: { id: user.id },
+                            data: { image: objectPath },
+                        });
+                    } else {
+                        // Cannot parse — fall back to redirect
+                        return Response.redirect(dbUser.image, 302);
+                    }
+                } catch {
+                    return Response.redirect(dbUser.image, 302);
+                }
             }
 
             try {
-                const { stat, stream } = await MinioService.getFileStream(
-                    dbUser.image,
-                );
+                const { stat, stream } =
+                    await MinioService.getFileStream(objectPath);
 
                 const webStream = new ReadableStream({
                     start(controller) {
