@@ -2,9 +2,6 @@ import { authGuardPlugin } from "@backend/middlewares/auth.ts";
 import { Elysia, t } from "elysia";
 import { Prisma } from "../db/index.ts";
 import { MinioService } from "../shared/services/minio.service.ts";
-import crypto from "crypto";
-import { MinioService } from "../shared/services/minio.service.ts";
-import crypto from "crypto";
 
 const db = Prisma;
 
@@ -55,7 +52,13 @@ export default new Elysia()
                 mahasiswaNim: fullUser.mahasiswa?.nim,
             });
 
-            return fullUser;
+            // Rewrite image to proxy URL if it's a stored MinIO object path
+            const imageUrl =
+                fullUser.image && !fullUser.image.startsWith("http")
+                    ? "/api/me/photo"
+                    : (fullUser.image ?? null);
+
+            return { ...fullUser, image: imageUrl };
         },
         {},
     )
@@ -165,7 +168,8 @@ export default new Elysia()
                             "profiles/",
                             `image/${extension}`,
                         );
-                        finalUrl = uploadResult.url;
+                        // Store the MinIO object path (not presigned URL) so proxy can serve it
+                        finalUrl = "profiles/" + uploadResult.nameReplace;
                     } catch (uploadError) {
                         console.error(
                             "Failed to upload profile photo to MinIO:",
@@ -188,10 +192,16 @@ export default new Elysia()
                     data: { image: finalUrl },
                 });
 
+                // Return proxy URL so frontend immediately uses proxy
+                const returnImage =
+                    updatedUser.image && !updatedUser.image.startsWith("http")
+                        ? "/api/me/photo"
+                        : (updatedUser.image ?? null);
+
                 return {
                     success: true,
                     data: {
-                        image: updatedUser.image,
+                        image: returnImage,
                     },
                 };
             } catch (error) {
@@ -208,4 +218,65 @@ export default new Elysia()
                 url: t.String(), // Base64 data URL atau path ke file
             }),
         },
+    )
+    /**
+     * Proxy endpoint to serve profile photo from MinIO
+     */
+    .get(
+        "/photo",
+        async ({ user, set }) => {
+            if (!user) {
+                set.status = 401;
+                return new Response("Unauthorized", { status: 401 });
+            }
+
+            const dbUser = await db.user.findUnique({
+                where: { id: user.id },
+                select: { image: true },
+            });
+
+            if (!dbUser?.image) {
+                set.status = 404;
+                return new Response("No profile photo", { status: 404 });
+            }
+
+            // Only proxy MinIO object paths (not external http URLs)
+            if (dbUser.image.startsWith("http")) {
+                return Response.redirect(dbUser.image, 302);
+            }
+
+            try {
+                const { stat, stream } = await MinioService.getFileStream(
+                    dbUser.image,
+                );
+
+                const webStream = new ReadableStream({
+                    start(controller) {
+                        stream.on("data", (chunk: Buffer) =>
+                            controller.enqueue(chunk),
+                        );
+                        stream.on("end", () => controller.close());
+                        stream.on("error", (err: Error) =>
+                            controller.error(err),
+                        );
+                    },
+                });
+
+                const contentType =
+                    stat.metaData?.["content-type"] || "image/jpeg";
+                return new Response(webStream, {
+                    status: 200,
+                    headers: {
+                        "Content-Type": contentType,
+                        "Content-Length": String(stat.size),
+                        "Cache-Control": "private, max-age=3600",
+                    },
+                });
+            } catch (error) {
+                console.error("Profile photo proxy error:", error);
+                set.status = 404;
+                return new Response("Photo not found", { status: 404 });
+            }
+        },
+        {},
     );
