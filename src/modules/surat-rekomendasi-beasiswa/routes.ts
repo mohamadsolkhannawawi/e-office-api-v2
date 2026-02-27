@@ -302,6 +302,15 @@ const suratRekomendasiRoutes = new Elysia({
             }),
         },
     )
+    .get(
+        "/attachments/:attachmentId/download",
+        AttachmentController.downloadAttachment,
+        {
+            params: t.Object({
+                attachmentId: t.String(),
+            }),
+        },
+    )
     .get("/debug/all-instances", async ({ user }) => {
         try {
             if (!user) {
