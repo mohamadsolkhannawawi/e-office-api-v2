@@ -1,6 +1,5 @@
 import { ApplicationService } from "../services/application.service.ts";
 import { ROLE_STEP_MAP } from "../constants.ts";
-import { MinioService } from "../../../shared/services/minio.service.ts";
 import { Prisma } from "../../../db/index.ts";
 import { SuratRekomendasiTemplateService } from "../../../services/template/SuratRekomendasiTemplateService.js";
 import { DocumentCleanupService } from "../../../services/DocumentCleanupService.ts";
@@ -761,23 +760,10 @@ export class ApplicationController {
                     data: {
                         ...application,
                         formData,
-                        attachments: await Promise.all(
-                            application.attachments.map(async (att: any) => {
-                                let downloadUrl = "";
-                                try {
-                                    downloadUrl =
-                                        await MinioService.getPresignedUrl(
-                                            "",
-                                            att.domain,
-                                            3600,
-                                        );
-                                } catch (err) {
-                                    console.error(
-                                        "Failed to generate presigned URL:",
-                                        err,
-                                    );
-                                }
-                                return { ...att, downloadUrl };
+                        attachments: application.attachments.map(
+                            (att: any) => ({
+                                ...att,
+                                downloadUrl: `/api/surat-rekomendasi/attachments/${att.id}/download`,
                             }),
                         ),
                         verification: application.verification
@@ -921,25 +907,10 @@ export class ApplicationController {
                 data: {
                     ...application,
                     formData,
-                    attachments: await Promise.all(
-                        application.attachments.map(async (att: any) => {
-                            let downloadUrl = "";
-                            try {
-                                downloadUrl =
-                                    await MinioService.getPresignedUrl(
-                                        "",
-                                        att.domain,
-                                        3600,
-                                    );
-                            } catch (err) {
-                                console.error(
-                                    "Failed to generate presigned URL:",
-                                    err,
-                                );
-                            }
-                            return { ...att, downloadUrl };
-                        }),
-                    ),
+                    attachments: application.attachments.map((att: any) => ({
+                        ...att,
+                        downloadUrl: `/api/surat-rekomendasi/attachments/${att.id}/download`,
+                    })),
                     verification: application.verification
                         ? {
                               code: application.verification.code,
