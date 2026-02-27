@@ -18,6 +18,36 @@ export abstract class MinioService {
         .required()
         .asString();
 
+    /**
+     * URL publik MinIO yang dapat diakses browser.
+     * Berbeda dari MINIO_ENDPOINT (yang digunakan untuk koneksi internal server ↔ MinIO).
+     * Presigned URL yang dikembalikan ke frontend akan menggunakan URL ini.
+     */
+    private static publicUrl: string = env
+        .get("MINIO_PUBLIC_URL")
+        .default(
+            `${env.get("MINIO_USE_SSL").default("false").asBoolStrict() ? "https" : "http"}://${env.get("MINIO_ENDPOINT").required().asString()}:${env.get("MINIO_PORT").required().asPortNumber()}`,
+        )
+        .asString()
+        .replace(/\/$/, "");
+
+    /**
+     * Mengganti host internal (localhost/docker) pada presigned URL dengan public URL
+     * agar browser pengguna dapat mengaksesnya langsung.
+     */
+    private static rewriteToPublicUrl(presignedUrl: string): string {
+        try {
+            const parsed = new URL(presignedUrl);
+            const publicBase = new URL(MinioService.publicUrl);
+            parsed.protocol = publicBase.protocol;
+            parsed.hostname = publicBase.hostname;
+            parsed.port = publicBase.port;
+            return parsed.toString();
+        } catch {
+            return presignedUrl;
+        }
+    }
+
     private static generateUniqueFileNameWithTimestamp(
         originalName: string,
     ): string {
@@ -88,7 +118,7 @@ export abstract class MinioService {
             7 * 24 * 60 * 60,
         );
 
-        return url;
+        return MinioService.rewriteToPublicUrl(url);
     }
 
     public static async uploadFile(
@@ -134,7 +164,7 @@ export abstract class MinioService {
                 7 * 24 * 60 * 60,
             );
 
-            return { url, nameReplace };
+            return { url: MinioService.rewriteToPublicUrl(url), nameReplace };
         } catch (error) {
             console.error(" MINIO ERROR:");
             if (error instanceof Error) {
@@ -179,7 +209,7 @@ export abstract class MinioService {
             folderBucket + objectName,
             expirySeconds,
         );
-        return url;
+        return MinioService.rewriteToPublicUrl(url);
     }
 
     public static async listObjects(prefix = ""): Promise<string[]> {
