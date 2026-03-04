@@ -351,7 +351,7 @@ const rolePermissions: RolePermissions[] = [
                 action: "cleanup",
                 description: "Clean up old/orphaned documents",
             },
-            // Letter Management (full access)
+            // Letter Management (full access + workflow override)
             {
                 resource: "letter",
                 action: "read:all",
@@ -361,6 +361,62 @@ const rolePermissions: RolePermissions[] = [
                 resource: "letter",
                 action: "read:archive",
                 description: "View archived letters",
+            },
+            {
+                resource: "letter",
+                action: "approve:supervisor",
+                description: "Act as Supervisor Akademik – approve letter",
+            },
+            {
+                resource: "letter",
+                action: "reject:supervisor",
+                description: "Act as Supervisor Akademik – reject letter",
+            },
+            {
+                resource: "letter",
+                action: "revise:supervisor",
+                description: "Act as Supervisor Akademik – request revision",
+            },
+            {
+                resource: "letter",
+                action: "approve:tu",
+                description: "Act as Manajer TU – approve letter",
+            },
+            {
+                resource: "letter",
+                action: "reject:tu",
+                description: "Act as Manajer TU – reject letter",
+            },
+            {
+                resource: "letter",
+                action: "revise:tu",
+                description: "Act as Manajer TU – request revision",
+            },
+            {
+                resource: "letter",
+                action: "approve:wd1",
+                description: "Act as Wakil Dekan 1 – approve and sign letter",
+            },
+            {
+                resource: "letter",
+                action: "reject:wd1",
+                description: "Act as Wakil Dekan 1 – reject letter",
+            },
+            {
+                resource: "letter",
+                action: "revise:wd1",
+                description: "Act as Wakil Dekan 1 – request revision",
+            },
+            {
+                resource: "letter",
+                action: "publish",
+                description:
+                    "Act as UPA – publish letter with number and stamp",
+            },
+            {
+                resource: "letter",
+                action: "override",
+                description: "Override any workflow step as Super Admin",
             },
             // Notification
             {
