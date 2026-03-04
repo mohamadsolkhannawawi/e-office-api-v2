@@ -230,6 +230,7 @@ const suratRekomendasiRoutes = new Elysia({
                 targetStep: t.Optional(t.Number()), // For dynamic revisions
                 signatureUrl: t.Optional(t.String()), // For WD1 approval
                 letterNumber: t.Optional(t.String()), // For UPA publishing
+                stampId: t.Optional(t.String()), // For UPA stamp (and super-admin acting as UPA)
             }),
         },
     )
