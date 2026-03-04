@@ -28,7 +28,7 @@ export const app = new Elysia()
                 .default("http://localhost:3000")
                 .asString()
                 .split(","),
-            methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
             credentials: true,
             allowedHeaders: ["Content-Type", "Authorization"],
         }),
