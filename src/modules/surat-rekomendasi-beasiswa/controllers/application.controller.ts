@@ -560,10 +560,14 @@ export class ApplicationController {
             const isMahasiswa = userRoles.some(
                 (r: string) => r.toUpperCase() === "MAHASISWA",
             );
+            const isSuperAdmin = userRoles.some(
+                (r: string) => r.toUpperCase() === "SUPER_ADMIN",
+            );
 
             console.log("Role detection:", {
                 userRoles,
                 isMahasiswa,
+                isSuperAdmin,
                 userId: user?.id,
             });
 
@@ -579,6 +583,11 @@ export class ApplicationController {
                 if (status === "IN_PROGRESS") {
                     filters.excludeStatus = ["REJECTED", "COMPLETED"];
                 }
+            } else if (isSuperAdmin) {
+                // Super admin sees ALL applications (no role-based filtering)
+                // Only exclude DRAFTs by default
+                filters.excludeStatus = ["DRAFT"];
+                // No currentRoleId / roleFilterMode restriction — super-admin sees everything
             } else {
                 // For reviewers/staff, exclude DRAFT applications
                 filters.excludeStatus = ["DRAFT"];
@@ -976,6 +985,25 @@ export class ApplicationController {
                 return { error: "Application not found" };
             }
 
+            // Resolve effective roleId: when SUPER_ADMIN acts, record history
+            // as the role that owns the current step (cleaner audit trail)
+            const userRoles = Array.isArray(user?.roles)
+                ? user.roles
+                : [user?.role].filter(Boolean);
+            const isSuperAdmin = userRoles.some(
+                (r: string) => String(r).toUpperCase() === "SUPER_ADMIN",
+            );
+            let effectiveRoleId: string | null = user.roleId || null;
+            if (isSuperAdmin && currentApp.currentStep) {
+                const stepRoleName = STEP_ROLE_MAP[currentApp.currentStep];
+                if (stepRoleName) {
+                    const stepRole = await db.role.findUnique({
+                        where: { name: stepRoleName },
+                    });
+                    if (stepRole) effectiveRoleId = stepRole.id;
+                }
+            }
+
             let newStatus = currentApp.status;
             let newStep = currentApp.currentStep ?? 1;
             let nextRoleId: string | undefined = undefined;
@@ -1118,7 +1146,7 @@ export class ApplicationController {
                         action === "revision" && targetRoleNameForHistory
                             ? `${notes || ""} [ke ${targetRoleNameForHistory}]`
                             : notes,
-                    roleId: user.roleId || null, // Pass user's roleId to track which role processed it
+                    roleId: effectiveRoleId, // Use step role for SUPER_ADMIN, own role otherwise
                 },
             );
 
