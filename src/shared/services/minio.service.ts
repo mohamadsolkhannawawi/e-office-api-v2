@@ -232,6 +232,47 @@ export abstract class MinioService {
 
         return { stat, stream };
     }
+
+    /**
+     * Extract object key from a presigned URL or return as-is if already an object path.
+     * Handles both local MinIO and S3-compatible URLs.
+     */
+    public static extractObjectKey(urlOrPath: string): string {
+        if (!urlOrPath || !urlOrPath.startsWith("http")) {
+            return urlOrPath;
+        }
+        try {
+            const parsed = new URL(urlOrPath);
+            const pathParts = parsed.pathname.split("/").filter(Boolean);
+            // Find the bucket name in the path and return everything after it
+            const bucketIndex = pathParts.indexOf(MinioService.bucketName);
+            if (bucketIndex !== -1) {
+                return pathParts.slice(bucketIndex + 1).join("/");
+            }
+            // Fallback: assume first segment is bucket, rest is key
+            return pathParts.slice(1).join("/");
+        } catch {
+            return urlOrPath;
+        }
+    }
+
+    /**
+     * Generate a fresh presigned URL from either an existing presigned URL or an object path.
+     * This solves the expired presigned URL problem by always generating a new one.
+     */
+    public static async refreshPresignedUrl(
+        urlOrPath: string,
+        expirySeconds: number = 7 * 24 * 60 * 60,
+    ): Promise<string> {
+        const objectKey = MinioService.extractObjectKey(urlOrPath);
+        if (!objectKey) return urlOrPath;
+        return await MinioService.client.presignedUrl(
+            "GET",
+            MinioService.bucketName,
+            objectKey,
+            expirySeconds,
+        );
+    }
 }
 
 await MinioService.ensureBucket();
