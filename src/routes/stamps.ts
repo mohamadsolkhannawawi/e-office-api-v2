@@ -40,9 +40,17 @@ const stampRoutes = new Elysia({
             orderBy: { createdAt: "desc" },
         });
 
+        // Generate fresh presigned URLs for each stamp
+        const stampsWithFreshUrls = await Promise.all(
+            stamps.map(async (stamp) => ({
+                ...stamp,
+                url: await MinioService.refreshPresignedUrl(stamp.url),
+            })),
+        );
+
         return {
             success: true,
-            data: stamps,
+            data: stampsWithFreshUrls,
         };
     })
 
@@ -86,7 +94,8 @@ const stampRoutes = new Elysia({
                         "stamp/",
                         `image/${extension}`,
                     );
-                    finalUrl = uploadResult.url;
+                    // Store the object path (not presigned URL) so we can refresh it later
+                    finalUrl = "stamp/" + uploadResult.nameReplace;
                 } catch (error) {
                     console.error("MinIO upload error:", error);
                     throw new Error(

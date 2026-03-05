@@ -3,6 +3,7 @@ import { ROLE_STEP_MAP } from "../constants.ts";
 import { Prisma } from "../../../db/index.ts";
 import { SuratRekomendasiTemplateService } from "../../../services/template/SuratRekomendasiTemplateService.js";
 import { DocumentCleanupService } from "../../../services/DocumentCleanupService.ts";
+import { MinioService } from "../../../shared/services/minio.service.ts";
 import { writeFileSync } from "fs";
 import { join } from "path";
 import {
@@ -911,10 +912,42 @@ export class ApplicationController {
                 namaBeasiswa: application.scholarshipName,
             };
 
+            // Refresh presigned URLs in values (e.g., wd1_signature) so they don't expire
+            const refreshedValues =
+                application.values && typeof application.values === "object"
+                    ? { ...(application.values as Record<string, unknown>) }
+                    : {};
+            if (
+                refreshedValues.wd1_signature &&
+                typeof refreshedValues.wd1_signature === "string"
+            ) {
+                try {
+                    refreshedValues.wd1_signature =
+                        await MinioService.refreshPresignedUrl(
+                            refreshedValues.wd1_signature as string,
+                        );
+                } catch (e) {
+                    console.warn(
+                        "⚠️ [getApplicationDetail] Failed to refresh wd1_signature URL:",
+                        e,
+                    );
+                }
+            }
+
             return {
                 success: true,
                 data: {
                     ...application,
+                    values: refreshedValues,
+                    // Refresh stamp URL if present
+                    stamp: application.stamp
+                        ? {
+                              ...application.stamp,
+                              url: await MinioService.refreshPresignedUrl(
+                                  application.stamp.url,
+                              ),
+                          }
+                        : null,
                     formData,
                     attachments: application.attachments.map((att: any) => ({
                         ...att,
@@ -1025,7 +1058,8 @@ export class ApplicationController {
                         }
                         newValues = {
                             ...newValues,
-                            wd1_signature: signatureUrl,
+                            wd1_signature:
+                                MinioService.extractObjectKey(signatureUrl),
                         };
                     } else if (newStep === 4) {
                         // UPA Approval -> Requires Letter Number (Publish)
@@ -1585,7 +1619,10 @@ export class ApplicationController {
 
             // Check if WD1 signature is stored in values (added during WD1 approval)
             if (letterValues.wd1_signature) {
-                signatureUrl = letterValues.wd1_signature;
+                // Refresh presigned URL in case it's stored as object path or expired URL
+                signatureUrl = await MinioService.refreshPresignedUrl(
+                    letterValues.wd1_signature,
+                );
                 console.log(
                     `✅ [autoGenerateTemplate] WD1 signature found in values: ${signatureUrl}`,
                 );
@@ -1613,7 +1650,10 @@ export class ApplicationController {
                         });
 
                         if (wd1Signature) {
-                            signatureUrl = wd1Signature.url;
+                            signatureUrl =
+                                await MinioService.refreshPresignedUrl(
+                                    wd1Signature.url,
+                                );
                             console.log(
                                 `✅ [autoGenerateTemplate] WD1 signature from user: ${signatureUrl}`,
                             );
@@ -1625,7 +1665,9 @@ export class ApplicationController {
             // Get stamp URL from letterInstance
             let stampUrl = undefined;
             if (letterInstance.stamp) {
-                stampUrl = letterInstance.stamp.url;
+                stampUrl = await MinioService.refreshPresignedUrl(
+                    letterInstance.stamp.url,
+                );
                 console.log(
                     `✅ [autoGenerateTemplate] Stamp found: ${stampUrl}`,
                 );
@@ -1755,10 +1797,13 @@ export class ApplicationController {
             }
 
             // Update application values with WD1 signature
+            // Store as object path (not presigned URL) for persistence
             const currentValues = (application.values as any) || {};
+            const signatureObjectKey =
+                MinioService.extractObjectKey(signatureUrl);
             const updatedValues = {
                 ...currentValues,
-                wd1_signature: signatureUrl,
+                wd1_signature: signatureObjectKey,
             };
 
             await db.letterInstance.update({

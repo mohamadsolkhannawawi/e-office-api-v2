@@ -3,6 +3,7 @@ import { Prisma } from "../../db/index.js";
 import { pdfConversionService } from "../../services/pdf/PdfConversionService.js";
 import { SuratRekomendasiTemplateService } from "../../services/template/index.js";
 import { DocumentCleanupService } from "../../services/DocumentCleanupService.js";
+import { MinioService } from "../../shared/services/minio.service.js";
 import { writeFileSync } from "fs";
 import { join } from "path";
 
@@ -1167,7 +1168,9 @@ export const templatesRoute = new Elysia({ prefix: "/templates" })
                 const letterValues = (letterInstance.values as any) || {};
 
                 if (letterValues.wd1_signature) {
-                    signatureUrl = letterValues.wd1_signature;
+                    signatureUrl = await MinioService.refreshPresignedUrl(
+                        letterValues.wd1_signature,
+                    );
                 } else if (
                     letterInstance.currentStep &&
                     letterInstance.currentStep >= 4
@@ -1190,7 +1193,10 @@ export const templatesRoute = new Elysia({ prefix: "/templates" })
                                 });
 
                             if (wd1Signature) {
-                                signatureUrl = wd1Signature.url;
+                                signatureUrl =
+                                    await MinioService.refreshPresignedUrl(
+                                        wd1Signature.url,
+                                    );
                             }
                         }
                     }
@@ -1199,7 +1205,9 @@ export const templatesRoute = new Elysia({ prefix: "/templates" })
                 // Get stamp URL
                 let stampUrl = undefined;
                 if (letterInstance.stamp) {
-                    stampUrl = letterInstance.stamp.url;
+                    stampUrl = await MinioService.refreshPresignedUrl(
+                        letterInstance.stamp.url,
+                    );
                 }
 
                 // Prepare template data

@@ -39,7 +39,15 @@ const signatureRoutes = new Elysia({
             orderBy: { createdAt: "desc" },
         });
 
-        return { data: signatures };
+        // Generate fresh presigned URLs for each signature
+        const signaturesWithFreshUrls = await Promise.all(
+            signatures.map(async (sig) => ({
+                ...sig,
+                url: await MinioService.refreshPresignedUrl(sig.url),
+            })),
+        );
+
+        return { data: signaturesWithFreshUrls };
     })
 
     /**
@@ -80,7 +88,8 @@ const signatureRoutes = new Elysia({
                         "signature/",
                         `image/${extension}`,
                     );
-                    finalUrl = uploadResult.url;
+                    // Store the object path (not presigned URL) so we can refresh it later
+                    finalUrl = "signature/" + uploadResult.nameReplace;
                 } catch (uploadError) {
                     console.error(
                         "Failed to upload signature to MinIO:",
@@ -218,6 +227,17 @@ const signatureRoutes = new Elysia({
         const defaultSignature = await Prisma.userSignature.findFirst({
             where: { userId: user.id, isDefault: true },
         });
+
+        if (defaultSignature) {
+            return {
+                data: {
+                    ...defaultSignature,
+                    url: await MinioService.refreshPresignedUrl(
+                        defaultSignature.url,
+                    ),
+                },
+            };
+        }
 
         return { data: defaultSignature };
     });
