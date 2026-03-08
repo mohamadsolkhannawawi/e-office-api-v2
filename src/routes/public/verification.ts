@@ -42,6 +42,7 @@ const publicVerificationRoutes = new Elysia({
                         name: result.letterType.name,
                         description: result.letterType.description,
                     },
+                    jenisBeasiswa: result.jenisBeasiswa,
 
                     // Applicant info (for verification context)
                     applicant: {

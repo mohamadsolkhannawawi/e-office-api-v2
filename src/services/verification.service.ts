@@ -115,6 +115,18 @@ export async function verifyLetter(code: string) {
             createdBy.pegawai?.programStudi?.name,
     };
 
+    // Resolve jenis from application values
+    const letterValues = record.application.values as Record<
+        string,
+        unknown
+    > | null;
+    const jenisBeasiswa =
+        (letterValues?.jenisBeasiswa as string | undefined) || null;
+    const resolvedLetterTypeName =
+        jenisBeasiswa === "keperluan_lain"
+            ? "Surat Rekomendasi Keperluan Lain"
+            : record.application.letterType.name;
+
     // Format history for public display
     const history = record.application.history.map((h) => ({
         action: h.action,
@@ -133,9 +145,10 @@ export async function verifyLetter(code: string) {
         publishedAt: record.application.publishedAt,
         letterType: {
             id: record.application.letterType.id,
-            name: record.application.letterType.name,
+            name: resolvedLetterTypeName,
             description: record.application.letterType.description,
         },
+        jenisBeasiswa,
         applicant,
         application: {
             id: record.application.id,
