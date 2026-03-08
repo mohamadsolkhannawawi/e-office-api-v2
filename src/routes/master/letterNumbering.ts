@@ -16,6 +16,7 @@ import {
 import { Prisma } from "@backend/db/index.ts";
 import { auth } from "@backend/lib/auth.ts";
 import { config } from "@backend/config.ts";
+import { ApplicationController } from "@backend/modules/surat-rekomendasi-beasiswa/controllers/application.controller.ts";
 
 /**
  * Letter Numbering Management Routes
@@ -312,6 +313,17 @@ const letterNumberingRoutes = new Elysia({
                     ),
                 };
             }
+
+            // Trigger document regeneration with the new letter number
+            ApplicationController.autoGenerateTemplate(
+                params.applicationId,
+                params.applicationId,
+            ).catch((err) => {
+                console.warn(
+                    `⚠️ [letterNumbering] Failed to regenerate document after numbering:`,
+                    err,
+                );
+            });
 
             return {
                 success: true,
