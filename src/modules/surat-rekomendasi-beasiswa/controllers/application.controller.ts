@@ -1619,58 +1619,84 @@ export class ApplicationController {
 
             // Check if WD1 signature is stored in values (added during WD1 approval)
             if (letterValues.wd1_signature) {
-                // Refresh presigned URL in case it's stored as object path or expired URL
-                signatureUrl = await MinioService.refreshPresignedUrl(
-                    letterValues.wd1_signature,
-                );
-                console.log(
-                    `✅ [autoGenerateTemplate] WD1 signature found in values: ${signatureUrl}`,
-                );
+                try {
+                    signatureUrl = await MinioService.refreshPresignedUrl(
+                        letterValues.wd1_signature,
+                    );
+                    console.log(
+                        `✅ [autoGenerateTemplate] WD1 signature found in values: ${signatureUrl}`,
+                    );
+                } catch (err) {
+                    console.warn(
+                        `⚠️ [autoGenerateTemplate] Failed to refresh WD1 signature URL, using raw:`,
+                        err instanceof Error ? err.message : err,
+                    );
+                    signatureUrl = letterValues.wd1_signature;
+                }
             } else if (
                 letterInstance.currentStep &&
                 letterInstance.currentStep >= 4
             ) {
                 // If we're at step 4+ but no signature in values, try to get from WD1 user
                 // Find users with WAKIL_DEKAN_1 role
-                const wd1Users = await db.userRole.findMany({
-                    where: { role: { name: "WAKIL_DEKAN_1" } },
-                    include: { user: true },
-                });
+                try {
+                    const wd1Users = await db.userRole.findMany({
+                        where: { role: { name: "WAKIL_DEKAN_1" } },
+                        include: { user: true },
+                    });
 
-                if (wd1Users.length > 0) {
-                    const firstWd1User = wd1Users[0];
-                    if (firstWd1User) {
-                        // Get the first WD1 user's default signature
-                        const wd1Signature = await db.userSignature.findFirst({
-                            where: {
-                                userId: firstWd1User.userId,
-                                isDefault: true,
-                            },
-                            orderBy: { createdAt: "desc" },
-                        });
+                    if (wd1Users.length > 0) {
+                        const firstWd1User = wd1Users[0];
+                        if (firstWd1User) {
+                            const wd1Signature =
+                                await db.userSignature.findFirst({
+                                    where: {
+                                        userId: firstWd1User.userId,
+                                        isDefault: true,
+                                    },
+                                    orderBy: { createdAt: "desc" },
+                                });
 
-                        if (wd1Signature) {
-                            signatureUrl =
-                                await MinioService.refreshPresignedUrl(
-                                    wd1Signature.url,
+                            if (wd1Signature) {
+                                try {
+                                    signatureUrl =
+                                        await MinioService.refreshPresignedUrl(
+                                            wd1Signature.url,
+                                        );
+                                } catch {
+                                    signatureUrl = wd1Signature.url;
+                                }
+                                console.log(
+                                    `✅ [autoGenerateTemplate] WD1 signature from user: ${signatureUrl}`,
                                 );
-                            console.log(
-                                `✅ [autoGenerateTemplate] WD1 signature from user: ${signatureUrl}`,
-                            );
+                            }
                         }
                     }
+                } catch (err) {
+                    console.warn(
+                        `⚠️ [autoGenerateTemplate] Failed to get WD1 user signature:`,
+                        err instanceof Error ? err.message : err,
+                    );
                 }
             }
 
             // Get stamp URL from letterInstance
             let stampUrl = undefined;
             if (letterInstance.stamp) {
-                stampUrl = await MinioService.refreshPresignedUrl(
-                    letterInstance.stamp.url,
-                );
-                console.log(
-                    `✅ [autoGenerateTemplate] Stamp found: ${stampUrl}`,
-                );
+                try {
+                    stampUrl = await MinioService.refreshPresignedUrl(
+                        letterInstance.stamp.url,
+                    );
+                    console.log(
+                        `✅ [autoGenerateTemplate] Stamp found: ${stampUrl}`,
+                    );
+                } catch (err) {
+                    console.warn(
+                        `⚠️ [autoGenerateTemplate] Failed to refresh stamp URL, using raw:`,
+                        err instanceof Error ? err.message : err,
+                    );
+                    stampUrl = letterInstance.stamp.url;
+                }
             }
 
             // Prepare template data
