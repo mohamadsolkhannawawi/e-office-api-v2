@@ -10,7 +10,10 @@ import type {
 } from "../../generated/prisma/client.js";
 import { join } from "path";
 import { existsSync, writeFileSync, mkdirSync } from "fs";
-import { SRB_TEMPLATE_PATH } from "../../config/templates.config.js";
+import {
+    SRB_TEMPLATE_PATH,
+    SRL_TEMPLATE_PATH,
+} from "../../config/templates.config.js";
 import { config } from "../../config.js";
 
 const prisma = Prisma;
@@ -22,6 +25,7 @@ export interface SuratRekomendasiData {
     signatureUrl?: string;
     stampUrl?: string;
     publishedAt?: Date;
+    jenis?: string;
     leadershipConfig?: {
         name: string;
         nip: string;
@@ -52,9 +56,15 @@ export class SuratRekomendasiTemplateService {
             // Prepare digital features
             const digitalFeatures = await this.prepareDigitalFeatures(data);
 
+            // Select template based on jenis
+            const templatePath =
+                data.jenis === "keperluan_lain"
+                    ? SRL_TEMPLATE_PATH
+                    : this.templateName;
+
             // Generate document
             const documentBuffer = await this.templateService.generateDocument(
-                this.templateName,
+                templatePath,
                 templateData,
                 digitalFeatures,
             );
@@ -195,41 +205,55 @@ export class SuratRekomendasiTemplateService {
 
         // Signature
         if (data.signatureUrl) {
-            // Check if it's base64 encoded data (data:image/png;base64,...)
-            if (data.signatureUrl.startsWith("data:")) {
-                // Extract base64 part from data URL
-                const base64Match = data.signatureUrl.match(
-                    /^data:image\/\w+;base64,(.+)$/,
-                );
-                if (base64Match && base64Match[1]) {
-                    digitalFeatures.signatureImageBase64 = base64Match[1];
-                }
-            } else if (data.signatureUrl.startsWith("http")) {
-                // Full HTTP URL - download and save locally
-                digitalFeatures.signatureImagePath =
-                    await this.downloadAndSaveImage(
-                        data.signatureUrl,
-                        "signature",
+            try {
+                // Check if it's base64 encoded data (data:image/png;base64,...)
+                if (data.signatureUrl.startsWith("data:")) {
+                    // Extract base64 part from data URL
+                    const base64Match = data.signatureUrl.match(
+                        /^data:image\/\w+;base64,(.+)$/,
                     );
-            } else {
-                // Local path
-                const localPath = join(
-                    process.cwd(),
-                    "uploads",
-                    data.signatureUrl,
-                );
-                digitalFeatures.signatureImagePath = localPath;
+                    if (base64Match && base64Match[1]) {
+                        digitalFeatures.signatureImageBase64 = base64Match[1];
+                    }
+                } else if (data.signatureUrl.startsWith("http")) {
+                    // Full HTTP URL - download and save locally
+                    digitalFeatures.signatureImagePath =
+                        await this.downloadAndSaveImage(
+                            data.signatureUrl,
+                            "signature",
+                        );
+                } else {
+                    // Local path
+                    const localPath = join(
+                        process.cwd(),
+                        "uploads",
+                        data.signatureUrl,
+                    );
+                    digitalFeatures.signatureImagePath = localPath;
+                }
+            } catch (error) {
+                console.error("Error preparing signature image:", error);
+                // Continue without signature
             }
         }
 
         // Stamp
         if (data.stampUrl) {
-            if (data.stampUrl.startsWith("http")) {
-                digitalFeatures.stampImagePath =
-                    await this.downloadAndSaveImage(data.stampUrl, "stamp");
-            } else {
-                const localPath = join(process.cwd(), "uploads", data.stampUrl);
-                digitalFeatures.stampImagePath = localPath;
+            try {
+                if (data.stampUrl.startsWith("http")) {
+                    digitalFeatures.stampImagePath =
+                        await this.downloadAndSaveImage(data.stampUrl, "stamp");
+                } else {
+                    const localPath = join(
+                        process.cwd(),
+                        "uploads",
+                        data.stampUrl,
+                    );
+                    digitalFeatures.stampImagePath = localPath;
+                }
+            } catch (error) {
+                console.error("Error preparing stamp image:", error);
+                // Continue without stamp
             }
         }
 
@@ -306,20 +330,27 @@ export class SuratRekomendasiTemplateService {
             console.log(`📥 Downloading ${type} from:`, url);
             const response = await fetch(url);
             if (!response.ok) {
+                console.error(
+                    `❌ Failed to download ${type}: HTTP ${response.status} ${response.statusText}`,
+                );
                 throw new Error(
                     `Failed to download ${type}: ${response.status}`,
                 );
             }
 
             const buffer = Buffer.from(await response.arrayBuffer());
+
+            if (buffer.length === 0) {
+                throw new Error(`Downloaded ${type} is empty (0 bytes)`);
+            }
+
             writeFileSync(localPath, buffer);
             console.log(`✅ ${type} saved to:`, localPath);
 
             return localPath;
         } catch (error) {
             console.error(`Error downloading ${type}:`, error);
-            // Return URL as fallback (will be handled by caller)
-            return url;
+            throw error;
         }
     }
 
