@@ -470,6 +470,7 @@ model UserSignature {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   url           String
+  name          String?  // Nama kustom template
   isDefault     Boolean  @default(false)
   signatureType String   // 🔴 TAMBAHAN
   checksum      String?  // 🔴 TAMBAHAN
@@ -486,6 +487,7 @@ model UserStamp {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   url       String
+  name      String?  // Nama kustom template
   isDefault Boolean  @default(false)
   stampType String   // TEMPLATE, DRAWN, UPLOADED
   
