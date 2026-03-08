@@ -131,7 +131,10 @@ const signatureRoutes = new Elysia({
                 });
             }
 
-            return { data: signature };
+            // Return with a fresh presigned URL so the client can display
+            // the image immediately without needing to re-fetch
+            const freshUrl = await MinioService.refreshPresignedUrl(finalUrl);
+            return { data: { ...signature, url: freshUrl } };
         },
         {
             body: t.Object({

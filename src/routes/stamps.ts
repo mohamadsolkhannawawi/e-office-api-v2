@@ -117,9 +117,13 @@ const stampRoutes = new Elysia({
                     },
                 });
 
+                // Return with a fresh presigned URL so the client can display
+                // the image immediately without needing to re-fetch
+                const freshUrl =
+                    await MinioService.refreshPresignedUrl(finalUrl);
                 return {
                     success: true,
-                    data: stamp,
+                    data: { ...stamp, url: freshUrl },
                 };
             } catch (error) {
                 console.error("Create stamp error:", error);
