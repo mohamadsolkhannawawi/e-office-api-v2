@@ -161,6 +161,7 @@ export class ApplicationService {
         createdById?: string;
         currentRoleId?: string;
         jenisBeasiswa?: string;
+        excludeJenisBeasiswa?: string;
         search?: string;
         excludeStatus?: string[];
         startDate?: string;
@@ -222,6 +223,17 @@ export class ApplicationService {
                 values: {
                     path: ["jenisBeasiswa"],
                     equals: filters.jenisBeasiswa,
+                },
+            });
+        }
+
+        if (filters.excludeJenisBeasiswa) {
+            andConditions.push({
+                NOT: {
+                    values: {
+                        path: ["jenisBeasiswa"],
+                        equals: filters.excludeJenisBeasiswa,
+                    },
                 },
             });
         }

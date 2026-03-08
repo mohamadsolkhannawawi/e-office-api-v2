@@ -120,6 +120,7 @@ const suratRekomendasiRoutes = new Elysia({
                 mode: t.Optional(t.String()),
                 search: t.Optional(t.String()),
                 jenisBeasiswa: t.Optional(t.String()),
+                excludeJenisBeasiswa: t.Optional(t.String()),
                 startDate: t.Optional(t.String()),
                 endDate: t.Optional(t.String()),
                 sortOrder: t.Optional(t.String()),
