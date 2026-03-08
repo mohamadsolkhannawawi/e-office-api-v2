@@ -341,7 +341,16 @@ export class DocumentTemplateService {
 
                     // Merge text runs by removing XML boundaries between consecutive text elements
                     modified = true;
-                    return paragraph.replace(xmlBoundaryPattern, "");
+                    const merged = paragraph.replace(xmlBoundaryPattern, "");
+                    // After merging, ensure any <w:t> element that contains a template
+                    // variable also has xml:space="preserve". This prevents XML processors
+                    // from stripping whitespace (spaces, colons, tabs) that appear
+                    // before or around the variable in the merged text.
+                    return merged.replace(
+                        /<w:t(?![^>]*xml:space="preserve")([^>]*)>([^<]*\{\{)/g,
+                        (_, attrs, content) =>
+                            `<w:t xml:space="preserve"${attrs}>${content}`,
+                    );
                 },
             );
 
