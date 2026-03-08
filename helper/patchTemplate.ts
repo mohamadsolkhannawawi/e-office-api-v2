@@ -11,10 +11,13 @@ import PizZip from "pizzip";
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 
-const templatePath = join(
-    process.cwd(),
-    "templates/surat-rekomendasi-beasiswa/surat-rekomendasi-beasiswa-template-v1.docx",
-);
+const templateArg = process.argv[2];
+const templatePath = templateArg
+    ? join(process.cwd(), templateArg)
+    : join(
+          process.cwd(),
+          "templates/surat-rekomendasi-beasiswa/surat-rekomendasi-beasiswa-template-v1.docx",
+      );
 
 console.log("Loading template:", templatePath);
 const content = readFileSync(templatePath);
