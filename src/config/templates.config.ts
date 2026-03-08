@@ -117,3 +117,7 @@ export function getAvailableTemplates(letterTypeKey: string): TemplateConfig[] {
 // Non-null assertion safe because "surat-rekomendasi-beasiswa" is statically defined in TEMPLATE_CONFIG
 export const SRB_TEMPLATE_PATH =
     TEMPLATE_CONFIG["surat-rekomendasi-beasiswa"]!.defaultTemplate;
+
+// Template path for Surat Rekomendasi Keperluan Lain
+export const SRL_TEMPLATE_PATH =
+    "surat-rekomendasi-beasiswa/surat-rekomendasi-lain-template-v1.docx";
