@@ -278,6 +278,83 @@ export class DocumentTemplateService {
     ];
 
     /**
+     * Fix template tags that are split across Word XML runs.
+     * Word sometimes inserts XML formatting boundaries in the middle of template tags,
+     * e.g., {{nama</w:t></w:r><w:r><w:t>_lengkap}}
+     * This method merges such split tags back together within affected paragraphs.
+     */
+    private fixSplitTags(zip: PizZip): void {
+        const xmlFiles = [
+            "word/document.xml",
+            "word/header1.xml",
+            "word/header2.xml",
+            "word/header3.xml",
+            "word/footer1.xml",
+            "word/footer2.xml",
+            "word/footer3.xml",
+        ];
+
+        // Pattern that matches XML run boundaries between text elements
+        const xmlBoundaryPattern =
+            /<\/w:t>\s*<\/w:r>\s*<w:r(?:\s[^>]*)?>(?:\s*<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:t(?:\s[^>]*)?>/g;
+
+        for (const fileName of xmlFiles) {
+            const xmlFile = zip.file(fileName);
+            if (!xmlFile) continue;
+
+            const content = xmlFile.asText();
+            let modified = false;
+
+            // Process each paragraph: only merge runs in paragraphs with split template tags
+            const newContent = content.replace(
+                /<w:p\b[^>]*>[\s\S]*?<\/w:p>/g,
+                (paragraph) => {
+                    // Extract all text from <w:t> elements in this paragraph
+                    const textParts: string[] = [];
+                    paragraph.replace(
+                        /<w:t[^>]*>([\s\S]*?)<\/w:t>/g,
+                        (_: string, text: string) => {
+                            textParts.push(text);
+                            return _;
+                        },
+                    );
+
+                    if (textParts.length < 2) return paragraph;
+
+                    const fullText = textParts.join("");
+
+                    // Check if this paragraph has template-related content (braces)
+                    if (!fullText.includes("{")) return paragraph;
+
+                    // Check if any text element has unbalanced braces (indicating split tag)
+                    let hasSplit = false;
+                    for (const text of textParts) {
+                        const opens = (text.match(/\{/g) || []).length;
+                        const closes = (text.match(/\}/g) || []).length;
+                        if (opens !== closes) {
+                            hasSplit = true;
+                            break;
+                        }
+                    }
+
+                    if (!hasSplit) return paragraph;
+
+                    // Merge text runs by removing XML boundaries between consecutive text elements
+                    modified = true;
+                    return paragraph.replace(xmlBoundaryPattern, "");
+                },
+            );
+
+            if (modified) {
+                console.log(
+                    `[fixSplitTags] Fixed split template tags in ${fileName}`,
+                );
+                zip.file(fileName, newContent);
+            }
+        }
+    }
+
+    /**
      * Safe image-tag-only normalizer
      * Converts {%tag} -> {{%tag}} for image placeholders so they work
      * with double-brace {{ }} delimiters used by docxtemplater.
@@ -425,8 +502,10 @@ export class DocumentTemplateService {
             // NOTE: Full template normalization is DISABLED because it breaks
             // when text variable tags are split across XML elements by Word
             // (e.g., {{program</w:t></w:r><w:r><w:t>_studi}})
-            // Instead, we ONLY normalize image tags ({%tag} -> {{%tag}}) which is safe
-            // because image placeholders are short and typically not split by Word.
+            // Instead, we:
+            // 1. Fix split tags by merging runs within affected paragraphs
+            // 2. Normalize image tags ({%tag} -> {{%tag}}) which is safe
+            this.fixSplitTags(zip);
             this.normalizeImageTags(zip);
 
             // Prepare data with defaults (includes processing images)
