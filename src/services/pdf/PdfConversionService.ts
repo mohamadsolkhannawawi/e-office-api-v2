@@ -133,9 +133,11 @@ export class PdfConversionService {
         }
 
         // Step 2: Apply password protection using qpdf (if available)
+        // user-password="" (no password to open), owner-password=PDF_PASSWORD (hidden)
+        // --modify=none --annotate=n prevents editing in Nitro PDF, Adobe, etc.
         try {
             const encryptedPath = pdfPath.replace(".pdf", "_encrypted.pdf");
-            const qpdfCommand = `qpdf --encrypt "${PDF_PASSWORD}" "" 256 -- "${pdfPath}" "${encryptedPath}"`;
+            const qpdfCommand = `qpdf --encrypt "" "${PDF_PASSWORD}" 256 --modify=none --annotate=n --print=full --extract=n -- "${pdfPath}" "${encryptedPath}"`;
 
             await execAsync(qpdfCommand, { timeout: 30000 });
 
