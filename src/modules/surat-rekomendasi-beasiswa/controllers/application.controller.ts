@@ -1707,6 +1707,7 @@ export class ApplicationController {
                 signatureUrl: signatureUrl,
                 stampUrl: stampUrl,
                 publishedAt: letterInstance.publishedAt || undefined,
+                jenis: letterValues.jenisBeasiswa || undefined,
                 leadershipConfig: leadershipConfig
                     ? {
                           name: (leadershipConfig.value as any)?.name || "",
