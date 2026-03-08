@@ -1,11 +1,15 @@
 /**
  * PDF Conversion Service
  * Uses LibreOffice headless to convert DOCX files to PDF
+ * Applies password protection using qpdf (preferred) or LibreOffice fallback
  *
  * Requirements:
  * - LibreOffice must be installed on the server
  * - Windows: winget install TheDocumentFoundation.LibreOffice
  * - Linux: sudo apt-get install libreoffice
+ * - For PDF password protection (recommended):
+ *   - Windows: choco install qpdf
+ *   - Linux: sudo apt-get install qpdf
  */
 
 import { exec } from "child_process";
@@ -32,6 +36,8 @@ const LIBREOFFICE_PATHS = {
     ],
     darwin: ["/Applications/LibreOffice.app/Contents/MacOS/soffice"],
 };
+
+const PDF_PASSWORD = "FSMMAJUSELALU";
 
 export class PdfConversionService {
     private libreOfficePath: string | null = null;
@@ -96,17 +102,14 @@ export class PdfConversionService {
         console.log(`📄 [PdfConversionService] Converting: ${docxPath}`);
         console.log(`📄 [PdfConversionService] Output: ${pdfPath}`);
 
-        // Build LibreOffice command
-        // --headless: Run without GUI
-        // --convert-to pdf: Convert to PDF format
-        // --outdir: Output directory
-        const command = `"${this.libreOfficePath}" --headless --convert-to pdf --outdir "${outputDir}" "${docxPath}"`;
-
-        console.log(`🔧 [PdfConversionService] Executing: ${command}`);
+        // Step 1: Convert DOCX to unencrypted PDF
+        console.log(`📄 [PdfConversionService] Converting: ${docxPath}`);
+        const convertCommand = `"${this.libreOfficePath}" --headless --convert-to pdf --outdir "${outputDir}" "${docxPath}"`;
+        console.log(`🔧 [PdfConversionService] Executing conversion...`);
 
         try {
-            const { stdout, stderr } = await execAsync(command, {
-                timeout: 60000, // 60 second timeout
+            const { stdout, stderr } = await execAsync(convertCommand, {
+                timeout: 60000,
             });
 
             if (stdout)
@@ -114,7 +117,6 @@ export class PdfConversionService {
             if (stderr)
                 console.warn(`⚠️ [PdfConversionService] stderr: ${stderr}`);
 
-            // Verify PDF was created
             if (!fs.existsSync(pdfPath)) {
                 throw new Error(
                     "PDF file was not created. Conversion may have failed.",
@@ -122,7 +124,6 @@ export class PdfConversionService {
             }
 
             console.log(`✅ [PdfConversionService] PDF created: ${pdfPath}`);
-            return pdfPath;
         } catch (error: any) {
             console.error(
                 `❌ [PdfConversionService] Conversion failed:`,
@@ -130,6 +131,46 @@ export class PdfConversionService {
             );
             throw new Error(`PDF conversion failed: ${error.message}`);
         }
+
+        // Step 2: Apply password protection using qpdf (if available)
+        try {
+            const encryptedPath = pdfPath.replace(".pdf", "_encrypted.pdf");
+            const qpdfCommand = `qpdf --encrypt "${PDF_PASSWORD}" "" 256 -- "${pdfPath}" "${encryptedPath}"`;
+
+            await execAsync(qpdfCommand, { timeout: 30000 });
+
+            if (fs.existsSync(encryptedPath)) {
+                // Replace original with encrypted version
+                fs.unlinkSync(pdfPath);
+                fs.renameSync(encryptedPath, pdfPath);
+                console.log(
+                    `🔒 [PdfConversionService] PDF password protected successfully`,
+                );
+            }
+        } catch (encryptError: any) {
+            // qpdf not available - try LibreOffice macro approach as fallback
+            console.warn(
+                `⚠️ [PdfConversionService] qpdf not available, trying LibreOffice re-export with password...`,
+            );
+
+            try {
+                // Re-export the existing PDF with password using LibreOffice
+                const encCommand = `"${this.libreOfficePath}" --headless --convert-to "pdf:writer_pdf_Export:{'EncryptFile':{'type':'boolean','value':'true'},'DocumentOpenPassword':{'type':'string','value':'${PDF_PASSWORD}'}}" --outdir "${outputDir}" "${pdfPath}"`;
+                await execAsync(encCommand, { timeout: 60000 });
+                console.log(
+                    `🔒 [PdfConversionService] PDF password protected via LibreOffice fallback`,
+                );
+            } catch (fallbackError: any) {
+                console.warn(
+                    `⚠️ [PdfConversionService] Password protection not available. PDF will be unencrypted.`,
+                );
+                console.warn(
+                    `   Install qpdf for reliable PDF encryption: apt-get install qpdf (Linux) or choco install qpdf (Windows)`,
+                );
+            }
+        }
+
+        return pdfPath;
     }
 
     /**
