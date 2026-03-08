@@ -120,4 +120,4 @@ export const SRB_TEMPLATE_PATH =
 
 // Template path for Surat Rekomendasi Keperluan Lain
 export const SRL_TEMPLATE_PATH =
-    "surat-rekomendasi-beasiswa/surat-rekomendasi-lain-template-v1.docx";
+    "surat-rekomendasi-keperluan-lain/surat-rekomendasi-lain-template-v1.docx";

@@ -1,0 +1,175 @@
+{
+    "title": "Surat Rekomendasi Beasiswa Template Schema",
+    "type": "object",
+    "properties": {
+        "kop_universitas": {
+            "type": "string",
+            "title": "Nama Universitas",
+            "default": "KEMENTERIAN PENDIDIKAN TINGGI, SAINS, DAN TEKNOLOGI\nUNIVERSITAS DIPONEGORO",
+            "description": "Header universitas untuk kop surat"
+        },
+        "kop_fakultas": {
+            "type": "string",
+            "title": "Nama Fakultas",
+            "default": "FAKULTAS SAINS DAN MATEMATIKA",
+            "description": "Nama fakultas untuk kop surat"
+        },
+        "kop_alamat": {
+            "type": "string",
+            "title": "Alamat Fakultas",
+            "default": "Jalan Prof. Jacob Rais\nKampus Universitas Diponegoro\nTembalang Semarang, Kode Pos 50275",
+            "description": "Alamat lengkap fakultas"
+        },
+        "kop_telepon": {
+            "type": "string",
+            "title": "Nomor Telepon",
+            "default": "Telp (024) 7474754",
+            "description": "Nomor telepon fakultas"
+        },
+        "kop_fax": {
+            "type": "string",
+            "title": "Nomor Fax",
+            "default": "Fax (024) 76480690",
+            "description": "Nomor fax fakultas"
+        },
+        "kop_website": {
+            "type": "string",
+            "title": "Website",
+            "default": "Laman: www.fsm.undip.ac.id",
+            "description": "Website fakultas"
+        },
+        "kop_email": {
+            "type": "string",
+            "title": "Email",
+            "default": "Pos-el: fsm(at)undip.ac.id",
+            "description": "Email fakultas"
+        },
+        "judul_surat": {
+            "type": "string",
+            "title": "Judul Surat",
+            "default": "SURAT-REKOMENDASI",
+            "description": "Judul utama surat"
+        },
+        "nomor_surat": {
+            "type": "string",
+            "title": "Nomor Surat",
+            "default": "/UN7.F8.1/KM/……/20…",
+            "description": "Nomor surat resmi"
+        },
+        "nama_lengkap": {
+            "type": "string",
+            "title": "Nama Lengkap",
+            "description": "Nama lengkap mahasiswa pemohon"
+        },
+        "nim": {
+            "type": "string",
+            "title": "NIM",
+            "description": "Nomor Induk Mahasiswa"
+        },
+        "tempat_lahir": {
+            "type": "string",
+            "title": "Tempat Lahir",
+            "description": "Tempat lahir mahasiswa"
+        },
+        "tanggal_lahir": {
+            "type": "string",
+            "title": "Tanggal Lahir",
+            "format": "date",
+            "description": "Tanggal lahir mahasiswa (format: DD Month YYYY)"
+        },
+        "no_hp": {
+            "type": "string",
+            "title": "Nomor HP",
+            "description": "Nomor HP/telepon mahasiswa"
+        },
+        "tahun_akademik": {
+            "type": "string",
+            "title": "Tahun Akademik",
+            "pattern": "^\\d{4}/\\d{4}$",
+            "description": "Tahun akademik (misal: 2024/2025)"
+        },
+        "jurusan": {
+            "type": "string",
+            "title": "Jurusan",
+            "description": "Nama jurusan mahasiswa"
+        },
+        "program_studi": {
+            "type": "string",
+            "title": "Program Studi",
+            "description": "Program studi mahasiswa"
+        },
+        "semester": {
+            "type": "string",
+            "title": "Semester",
+            "description": "Semester saat ini"
+        },
+        "ipk": {
+            "type": "string",
+            "title": "IPK",
+            "description": "Indeks Prestasi Kumulatif"
+        },
+        "ips": {
+            "type": "string",
+            "title": "IPS",
+            "description": "Indeks Prestasi Semester"
+        },
+        "keperluan": {
+            "type": "string",
+            "title": "Keperluan",
+            "default": "Pengajuan Beasiswa",
+            "description": "Keperluan pembuatan surat"
+        },
+        "tanggal_terbit": {
+            "type": "string",
+            "format": "date",
+            "title": "Tanggal Terbit",
+            "description": "Tanggal penerbitan surat (format: DD Month YYYY)"
+        },
+        "jabatan_penandatangan": {
+            "type": "string",
+            "title": "Jabatan Penandatangan",
+            "default": "Wakil Dekan Akademik dan Kemahasiswaan",
+            "description": "Jabatan pejabat penandatangan"
+        },
+        "nama_penandatangan": {
+            "type": "string",
+            "title": "Nama Penandatangan",
+            "description": "Nama pejabat penandatangan"
+        },
+        "nip_penandatangan": {
+            "type": "string",
+            "title": "NIP Penandatangan",
+            "description": "NIP pejabat penandatangan"
+        },
+        "signature_image": {
+            "type": "string",
+            "title": "Tanda Tangan Digital",
+            "description": "Base64 encoded image tanda tangan Wakil Dekan 1. Gunakan {%signature_image} di template."
+        },
+        "stamp_image": {
+            "type": "string",
+            "title": "Stempel Digital",
+            "description": "Base64 encoded image stempel. Gunakan {%stamp_image} di template."
+        },
+        "qr_code": {
+            "type": "string",
+            "title": "QR Code Verifikasi",
+            "description": "Base64 encoded QR code untuk verifikasi keaslian surat. Gunakan {%qr_code} di template."
+        }
+    },
+    "required": [
+        "nama_lengkap",
+        "nim",
+        "tempat_lahir",
+        "tanggal_lahir",
+        "no_hp",
+        "tahun_akademik",
+        "program_studi",
+        "semester",
+        "ipk",
+        "ips",
+        "keperluan",
+        "nama_penandatangan",
+        "nip_penandatangan"
+    ]
+}
