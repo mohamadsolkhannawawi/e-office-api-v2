@@ -169,7 +169,12 @@ export const templatesRoute = new Elysia({ prefix: "/templates" })
                     include: {
                         createdBy: {
                             include: {
-                                mahasiswa: true,
+                                mahasiswa: {
+                                    include: {
+                                        departemen: true,
+                                        programStudi: true,
+                                    },
+                                },
                                 pegawai: true,
                             },
                         },
@@ -193,28 +198,104 @@ export const templatesRoute = new Elysia({ prefix: "/templates" })
                 // Initialize template service
                 const templateService = new SuratRekomendasiTemplateService();
 
-                // Get user signature if available
+                // Get WD1 signature (not the student's signature)
                 let signatureUrl = undefined;
-                if (letterInstance.createdBy) {
-                    const userSignature = await prisma.userSignature.findFirst({
-                        where: {
-                            userId: letterInstance.createdBy.id,
-                            isDefault: true,
-                        },
-                        orderBy: { createdAt: "desc" },
-                    });
+                const letterValues = (letterInstance.values as any) || {};
 
-                    if (userSignature) {
-                        signatureUrl = userSignature.url;
+                if (letterValues.wd1_signature) {
+                    try {
+                        signatureUrl = await MinioService.refreshPresignedUrl(
+                            letterValues.wd1_signature,
+                        );
+                    } catch {
+                        signatureUrl = letterValues.wd1_signature;
+                    }
+                } else if (
+                    letterInstance.currentStep &&
+                    letterInstance.currentStep >= 4
+                ) {
+                    try {
+                        const wd1Users = await prisma.userRole.findMany({
+                            where: { role: { name: "WAKIL_DEKAN_1" } },
+                            include: { user: true },
+                        });
+
+                        if (wd1Users.length > 0 && wd1Users[0]) {
+                            const wd1Signature =
+                                await prisma.userSignature.findFirst({
+                                    where: {
+                                        userId: wd1Users[0].userId,
+                                        isDefault: true,
+                                    },
+                                    orderBy: { createdAt: "desc" },
+                                });
+
+                            if (wd1Signature) {
+                                try {
+                                    signatureUrl =
+                                        await MinioService.refreshPresignedUrl(
+                                            wd1Signature.url,
+                                        );
+                                } catch {
+                                    signatureUrl = wd1Signature.url;
+                                }
+                            }
+                        }
+                    } catch (err) {
+                        console.warn(
+                            "⚠️ [generate] Failed to get WD1 signature:",
+                            err,
+                        );
                     }
                 }
 
-                // Prepare data
+                // Get stamp URL from letterInstance
+                let stampUrl = undefined;
+                if (letterInstance.stamp) {
+                    try {
+                        stampUrl = await MinioService.refreshPresignedUrl(
+                            letterInstance.stamp.url,
+                        );
+                    } catch {
+                        stampUrl = letterInstance.stamp.url;
+                    }
+                }
+
+                // Prepare data with all needed fields
+                const mahasiswa = letterInstance.createdBy?.mahasiswa;
                 const templateData = {
                     letterInstanceId: letterInstance.id,
-                    applicationData: letterInstance.values,
+                    applicationData: {
+                        namaLengkap: letterInstance.createdBy?.name || "",
+                        email: letterInstance.createdBy?.email || "",
+                        nim: mahasiswa?.nim || "",
+                        departemen: mahasiswa?.departemen?.name || "",
+                        programStudi: mahasiswa?.programStudi?.name || "",
+                        tempatLahir: mahasiswa?.tempatLahir || "",
+                        tanggalLahir: mahasiswa?.tanggalLahir || "",
+                        noHp: mahasiswa?.noHp || "",
+                        semester: mahasiswa?.semester
+                            ? String(mahasiswa.semester)
+                            : "",
+                        ipk: mahasiswa?.ipk ? String(mahasiswa.ipk) : "",
+                        ips: mahasiswa?.ips ? String(mahasiswa.ips) : "",
+                        ...letterValues,
+                        namaBeasiswa: letterInstance.scholarshipName,
+                    },
                     letterNumber: letterInstance.letterNumber || undefined,
                     signatureUrl: signatureUrl,
+                    stampUrl: stampUrl,
+                    publishedAt: letterInstance.publishedAt || undefined,
+                    jenis: letterValues.jenisBeasiswa || undefined,
+                    leadershipConfig: leadershipConfig
+                        ? {
+                              name: (leadershipConfig.value as any)?.name || "",
+                              nip: (leadershipConfig.value as any)?.nip || "",
+                              jabatan:
+                                  (leadershipConfig.value as any)?.jabatan ||
+                                  "",
+                          }
+                        : undefined,
                 };
 
                 // Validate data
@@ -1168,46 +1249,65 @@ export const templatesRoute = new Elysia({ prefix: "/templates" })
                 const letterValues = (letterInstance.values as any) || {};
 
                 if (letterValues.wd1_signature) {
-                    signatureUrl = await MinioService.refreshPresignedUrl(
-                        letterValues.wd1_signature,
-                    );
+                    try {
+                        signatureUrl = await MinioService.refreshPresignedUrl(
+                            letterValues.wd1_signature,
+                        );
+                    } catch {
+                        signatureUrl = letterValues.wd1_signature;
+                    }
                 } else if (
                     letterInstance.currentStep &&
                     letterInstance.currentStep >= 4
                 ) {
-                    const wd1Users = await prisma.userRole.findMany({
-                        where: { role: { name: "WAKIL_DEKAN_1" } },
-                        include: { user: true },
-                    });
+                    try {
+                        const wd1Users = await prisma.userRole.findMany({
+                            where: { role: { name: "WAKIL_DEKAN_1" } },
+                            include: { user: true },
+                        });
 
-                    if (wd1Users.length > 0) {
-                        const firstWd1User = wd1Users[0];
-                        if (firstWd1User) {
-                            const wd1Signature =
-                                await prisma.userSignature.findFirst({
-                                    where: {
-                                        userId: firstWd1User.userId,
-                                        isDefault: true,
-                                    },
-                                    orderBy: { createdAt: "desc" },
-                                });
+                        if (wd1Users.length > 0) {
+                            const firstWd1User = wd1Users[0];
+                            if (firstWd1User) {
+                                const wd1Signature =
+                                    await prisma.userSignature.findFirst({
+                                        where: {
+                                            userId: firstWd1User.userId,
+                                            isDefault: true,
+                                        },
+                                        orderBy: { createdAt: "desc" },
+                                    });
 
-                            if (wd1Signature) {
-                                signatureUrl =
-                                    await MinioService.refreshPresignedUrl(
-                                        wd1Signature.url,
-                                    );
+                                if (wd1Signature) {
+                                    try {
+                                        signatureUrl =
+                                            await MinioService.refreshPresignedUrl(
+                                                wd1Signature.url,
+                                            );
+                                    } catch {
+                                        signatureUrl = wd1Signature.url;
+                                    }
+                                }
                             }
                         }
+                    } catch (err) {
+                        console.warn(
+                            "⚠️ [letter/generate] Failed to get WD1 signature:",
+                            err,
+                        );
                     }
                 }
 
                 // Get stamp URL
                 let stampUrl = undefined;
                 if (letterInstance.stamp) {
-                    stampUrl = await MinioService.refreshPresignedUrl(
-                        letterInstance.stamp.url,
-                    );
+                    try {
+                        stampUrl = await MinioService.refreshPresignedUrl(
+                            letterInstance.stamp.url,
+                        );
+                    } catch {
+                        stampUrl = letterInstance.stamp.url;
+                    }
                 }
 
                 // Prepare template data
@@ -1242,6 +1342,7 @@ export const templatesRoute = new Elysia({ prefix: "/templates" })
                     signatureUrl: signatureUrl,
                     stampUrl: stampUrl,
                     publishedAt: letterInstance.publishedAt || undefined,
+                    jenis: letterValues.jenisBeasiswa || undefined,
                     leadershipConfig: leadershipConfig
                         ? {
                               name: (leadershipConfig.value as any)?.name || "",
