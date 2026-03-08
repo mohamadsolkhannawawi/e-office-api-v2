@@ -30,8 +30,8 @@ export const IMAGE_SIZE_CONFIG = {
     },
     // QR Code: 3cm x 3cm (square)
     qrCode: {
-        width: 37.8, // 3cm at 96 DPI
-        height: 37.8, // 3cm at 96 DPI
+        width: 113, // 3cm at 96 DPI
+        height: 113, // 3cm at 96 DPI
     },
     // Default for unknown images
     default: {
@@ -278,6 +278,58 @@ export class DocumentTemplateService {
     ];
 
     /**
+     * Safe image-tag-only normalizer
+     * Converts {%tag} -> {{%tag}} for image placeholders so they work
+     * with double-brace {{ }} delimiters used by docxtemplater.
+     *
+     * This is SAFE to run (unlike full normalizeTemplateBraces) because:
+     * - Image tags are short and typically not split across XML runs by Word
+     * - We only do exact string replacement for known image tag names
+     * - Text variable tags are left untouched (avoiding the split-tag issue)
+     */
+    private normalizeImageTags(zip: PizZip): void {
+        const IMAGE_TAGS = ["signature_image", "stamp_image", "qr_code"];
+
+        const xmlFiles = [
+            "word/document.xml",
+            "word/header1.xml",
+            "word/header2.xml",
+            "word/header3.xml",
+            "word/footer1.xml",
+            "word/footer2.xml",
+            "word/footer3.xml",
+        ];
+
+        for (const fileName of xmlFiles) {
+            const xmlFile = zip.file(fileName);
+            if (!xmlFile) continue;
+
+            let content = xmlFile.asText();
+            let modified = false;
+
+            for (const imgTag of IMAGE_TAGS) {
+                const singleBrace = `{%${imgTag}}`;
+                const doubleBrace = `{{%${imgTag}}}`;
+
+                // Skip if already in double-brace format
+                if (content.includes(doubleBrace)) continue;
+
+                if (content.includes(singleBrace)) {
+                    console.log(
+                        `[normalizeImageTags] Converting in ${fileName}: ${singleBrace} -> ${doubleBrace}`,
+                    );
+                    content = content.split(singleBrace).join(doubleBrace);
+                    modified = true;
+                }
+            }
+
+            if (modified) {
+                zip.file(fileName, content);
+            }
+        }
+    }
+
+    /**
      * Convert double braces {{name}} to single braces {name} in template
      * This allows templates using {{}} format to work with docxtemplater 3.67+
      * Image tags {%name} are kept as-is
@@ -370,13 +422,12 @@ export class DocumentTemplateService {
             const templateBuffer = this.loadTemplate(templateName);
             const zip = new PizZip(templateBuffer);
 
-            // NOTE: Template normalization is DISABLED
-            // The normalizer breaks templates when tags are split across XML elements
+            // NOTE: Full template normalization is DISABLED because it breaks
+            // when text variable tags are split across XML elements by Word
             // (e.g., {{program</w:t></w:r><w:r><w:t>_studi}})
-            // Instead, the DOCX template must be manually updated to:
-            // 1. Use {{%signature_image}} format for images (not {%signature_image})
-            // 2. Ensure all variable braces are complete {{variable}}
-            // this.normalizeTemplateBraces(zip);
+            // Instead, we ONLY normalize image tags ({%tag} -> {{%tag}}) which is safe
+            // because image placeholders are short and typically not split by Word.
+            this.normalizeImageTags(zip);
 
             // Prepare data with defaults (includes processing images)
             console.log("Preparing template data...");
