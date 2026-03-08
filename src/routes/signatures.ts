@@ -148,6 +148,39 @@ const signatureRoutes = new Elysia({
     )
 
     /**
+     * Update signature name
+     */
+    .patch(
+        "/:id",
+        async ({ user, params, body }) => {
+            if (!user) {
+                throw new Error("Unauthorized");
+            }
+
+            const signature = await Prisma.userSignature.findFirst({
+                where: { id: params.id, userId: user.id },
+            });
+
+            if (!signature) {
+                throw new Error("Signature not found");
+            }
+
+            const updated = await Prisma.userSignature.update({
+                where: { id: params.id },
+                data: { name: body.name },
+            });
+
+            return { data: updated };
+        },
+        {
+            params: t.Object({ id: t.String() }),
+            body: t.Object({
+                name: t.Optional(t.Union([t.String(), t.Null()])),
+            }),
+        },
+    )
+
+    /**
      * Set signature as default
      */
     .patch(

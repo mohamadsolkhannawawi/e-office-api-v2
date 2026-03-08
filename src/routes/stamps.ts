@@ -150,6 +150,40 @@ const stampRoutes = new Elysia({
     )
 
     /**
+     * Update stamp name
+     * PATCH /stamps/:id
+     */
+    .patch(
+        "/:id",
+        async ({ user, params, body }) => {
+            if (!user) {
+                throw new Error("Unauthorized");
+            }
+
+            const stamp = await Prisma.userStamp.findUnique({
+                where: { id: params.id },
+            });
+
+            if (!stamp || stamp.userId !== user.id) {
+                throw new Error("Stamp not found or unauthorized");
+            }
+
+            const updated = await Prisma.userStamp.update({
+                where: { id: params.id },
+                data: { name: body.name },
+            });
+
+            return { success: true, data: updated };
+        },
+        {
+            params: t.Object({ id: t.String() }),
+            body: t.Object({
+                name: t.Optional(t.Union([t.String(), t.Null()])),
+            }),
+        },
+    )
+
+    /**
      * Set stamp as default
      * PATCH /stamps/:id/default
      */
