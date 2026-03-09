@@ -18,10 +18,10 @@ export default new Elysia()
                 const totalUsers = await Prisma.user.count();
                 console.log("[System Stats] Total users:", totalUsers);
 
-                // Get active users (verified email)
+                // Get active users (isActive=true)
                 const activeUsers = await Prisma.user.count({
                     where: {
-                        emailVerified: true,
+                        isActive: true,
                     },
                 });
                 console.log("[System Stats] Active users:", activeUsers);
