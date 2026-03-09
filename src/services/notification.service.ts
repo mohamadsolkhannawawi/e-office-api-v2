@@ -34,12 +34,14 @@ export function formatRoleName(roleName: string | null | undefined): string {
         WAKIL_DEKAN_1: "Wakil Dekan 1",
         UPA: "Staff UPA",
         MAHASISWA: "Mahasiswa",
+        SUPER_ADMIN: "Administrator Sistem",
         // Handle lowercase variations
         supervisor: "Supervisor Akademik",
         manajer_tu: "Manajer TU",
         wakil_dekan_1: "Wakil Dekan 1",
         upa: "Staff UPA",
         mahasiswa: "Mahasiswa",
+        super_admin: "Administrator Sistem",
     };
 
     return roleMap[roleName] || roleName;
