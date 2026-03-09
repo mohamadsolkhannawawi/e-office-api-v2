@@ -160,7 +160,7 @@ export default new Elysia()
             }
 
             // Prevent removing own role if it's the last one
-            if (currentUser.userId === userId) {
+            if (currentUser.id === userId) {
                 const userRolesCount = await Prisma.userRole.count({
                     where: { userId },
                 });
