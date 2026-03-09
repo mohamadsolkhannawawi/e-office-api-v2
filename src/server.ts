@@ -180,19 +180,19 @@ export const app = new Elysia()
                 callbackURL?: string;
             };
 
-            // Pre-validation: Check if user account is active (emailVerified=true)
+            // Pre-validation: Check if user account is active (isActive=true)
             const user = await prisma.user.findUnique({
                 where: { email },
                 select: {
                     id: true,
-                    emailVerified: true,
+                    isActive: true,
                     email: true,
                     name: true,
                 },
             });
 
-            // If user found and account is deactivated (emailVerified=false), reject immediately
-            if (user && !user.emailVerified) {
+            // If user found and account is deactivated (isActive=false), reject immediately
+            if (user && !user.isActive) {
                 console.log(
                     `>>> SIGN-IN BLOCKED: Account deactivated for ${email}`,
                 );

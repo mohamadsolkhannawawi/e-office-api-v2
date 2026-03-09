@@ -130,6 +130,7 @@ model User {
   emailVerified Boolean  @default(false)
   image         String?
   isAnonymous   Boolean? @default(false)
+  isActive      Boolean  @default(true)
 
   mahasiswa Mahasiswa?
   pegawai   Pegawai?

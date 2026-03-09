@@ -24,12 +24,12 @@ export const authRoutes = new Elysia({
                     select: {
                         id: true,
                         email: true,
-                        emailVerified: true,
+                        isActive: true,
                     },
                 });
 
                 // Check if user exists and is deactivated
-                if (user && !user.emailVerified) {
+                if (user && !user.isActive) {
                     console.log(
                         `[Auth] Blocked login attempt for deactivated user: ${user.email}`,
                     );
@@ -56,10 +56,10 @@ export const authRoutes = new Elysia({
                 ) {
                     const currentUser = await Prisma.user.findUnique({
                         where: { id: (response.user as any).id },
-                        select: { emailVerified: true },
+                        select: { isActive: true },
                     });
 
-                    if (currentUser && !currentUser.emailVerified) {
+                    if (currentUser && !currentUser.isActive) {
                         // Delete the session that was just created
                         if ("session" in response && response.session) {
                             await Prisma.session

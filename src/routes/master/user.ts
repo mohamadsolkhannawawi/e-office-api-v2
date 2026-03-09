@@ -45,11 +45,11 @@ export default new Elysia()
                 };
             }
 
-            // Filter by status (emailVerified)
+            // Filter by status (isActive)
             if (status === "active") {
-                where.emailVerified = true;
+                where.isActive = true;
             } else if (status === "inactive") {
-                where.emailVerified = false;
+                where.isActive = false;
             }
 
             // Get total count
@@ -152,12 +152,12 @@ export default new Elysia()
             const activities = await Prisma.letterHistory.findMany({
                 where: {
                     OR: [
-                        { actionBy: id },
-                        { letterInstance: { createdBy: id } },
+                        { actorId: id },
+                        { letterInstance: { createdById: id } },
                     ],
                 },
                 include: {
-                    user: true,
+                    actor: true,
                     letterInstance: {
                         include: {
                             letterType: true,
@@ -199,7 +199,7 @@ export default new Elysia()
             });
 
             if (existingUser) {
-                throw new Error("Email already registered");
+                throw new Error("Email sudah terdaftar");
             }
 
             // Generate password (use provided or generate random)
@@ -214,6 +214,7 @@ export default new Elysia()
                     name,
                     email,
                     emailVerified: true,
+                    isActive: true,
                 },
             });
 
@@ -309,10 +310,19 @@ export default new Elysia()
                     }
                 }
 
+                if (!pegawaiData.departemenId || !pegawaiData.programStudiId) {
+                    throw new Error(
+                        "departemenId dan programStudiId wajib diisi untuk pegawai",
+                    );
+                }
                 await Prisma.pegawai.create({
                     data: {
                         userId: user.id,
-                        ...pegawaiData,
+                        nip: pegawaiData.nip,
+                        jabatan: pegawaiData.jabatan,
+                        noHp: pegawaiData.noHp,
+                        departemenId: pegawaiData.departemenId,
+                        programStudiId: pegawaiData.programStudiId,
                     },
                 });
                 console.log(
@@ -482,7 +492,7 @@ export default new Elysia()
         "/:id",
         async ({ params: { id }, user: currentUser }) => {
             // Prevent self-deletion
-            if (currentUser.userId === id) {
+            if (currentUser.id === id) {
                 throw new Error("Cannot delete your own account");
             }
 
@@ -580,12 +590,12 @@ export default new Elysia()
             const updatedUser = await Prisma.user.update({
                 where: { id },
                 data: {
-                    emailVerified: !user.emailVerified,
+                    isActive: !user.isActive,
                 },
             });
 
             return {
-                message: `User ${updatedUser.emailVerified ? "activated" : "deactivated"} successfully`,
+                message: `User ${updatedUser.isActive ? "activated" : "deactivated"} successfully`,
                 user: updatedUser,
             };
         },

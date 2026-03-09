@@ -25,10 +25,10 @@ export const authGuardPlugin = new Elysia({
         // Check if user is still active (not deactivated)
         const user = await Prisma.user.findUnique({
             where: { id: session.user.id },
-            select: { emailVerified: true, email: true },
+            select: { isActive: true, email: true },
         });
 
-        if (!user || !user.emailVerified) {
+        if (!user || !user.isActive) {
             console.log(
                 `[Auth Guard] Blocked request from deactivated user: ${user?.email || session.user.email}`,
             );
