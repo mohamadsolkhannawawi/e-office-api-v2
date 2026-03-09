@@ -205,21 +205,23 @@ const letterNumberingRoutes = new Elysia({
                 };
             }
 
-            // Check if user is UPA
-            const userRole = await Prisma.userRole.findFirst({
-                where: {
-                    userId: user.id,
-                    role: {
-                        name: "UPA",
-                    },
-                },
+            // Check if user is UPA or SUPER_ADMIN
+            const userRoles = await Prisma.userRole.findMany({
+                where: { userId: user.id },
+                include: { role: true },
             });
+            const userRoleNames = userRoles.map(
+                (ur: { role: { name: string } }) => ur.role.name.toUpperCase(),
+            );
+            const isAuthorized =
+                userRoleNames.includes("UPA") ||
+                userRoleNames.includes("SUPER_ADMIN");
 
-            if (!userRole) {
+            if (!isAuthorized) {
                 set.status = 403;
                 return {
                     success: false,
-                    error: "Forbidden: Only UPA can edit letter numbers",
+                    error: "Forbidden: Only UPA or Super Admin can edit letter numbers",
                 };
             }
 
