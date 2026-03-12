@@ -46,6 +46,10 @@ export default new Elysia()
                 // NIM placeholder = prefix email (bukan 14 digit angka)
                 if (!/^\d{14}$/.test(fullUser.mahasiswa.nim))
                     missingFields.push("nim");
+                if (!fullUser.mahasiswa.tempatLahir)
+                    missingFields.push("tempatLahir");
+                if (!fullUser.mahasiswa.tanggalLahir)
+                    missingFields.push("tanggalLahir");
             }
 
             if (isPegawai && fullUser.pegawai) {
@@ -181,6 +185,9 @@ export default new Elysia()
                     if (body.departemenId) mhsData.departemenId = body.departemenId;
                     if (body.programStudiId) mhsData.programStudiId = body.programStudiId;
 
+                    if (body.tempatLahir) mhsData.tempatLahir = body.tempatLahir;
+                    if (body.tanggalLahir) mhsData.tanggalLahir = new Date(body.tanggalLahir);
+
                     if (Object.keys(mhsData).length > 0) {
                         await db.mahasiswa.update({
                             where: { userId: user.id },
@@ -221,6 +228,8 @@ export default new Elysia()
                 nim: t.Optional(t.String()),
                 noHp: t.Optional(t.String()),
                 tahunMasuk: t.Optional(t.String()),
+                tempatLahir: t.Optional(t.String()),
+                tanggalLahir: t.Optional(t.String()),
                 departemenId: t.Optional(t.String()),
                 programStudiId: t.Optional(t.String()),
             }),
@@ -248,8 +257,8 @@ export default new Elysia()
                           })
                         : await db.user.findUnique({ where: { id: user.id } });
 
-                // Update phone number / tahunMasuk based on role (mahasiswa or pegawai)
-                if (body.noHp || body.tahunMasuk) {
+                // Update phone number / tahunMasuk / tempatLahir / tanggalLahir based on role
+                if (body.noHp || body.tahunMasuk || body.tempatLahir || body.tanggalLahir) {
                     const mahasiswa = await db.mahasiswa.findUnique({
                         where: { userId: user.id },
                     });
@@ -258,6 +267,8 @@ export default new Elysia()
                         const mhsData: Record<string, any> = {};
                         if (body.noHp) mhsData.noHp = body.noHp;
                         if (body.tahunMasuk) mhsData.tahunMasuk = body.tahunMasuk;
+                        if (body.tempatLahir) mhsData.tempatLahir = body.tempatLahir;
+                        if (body.tanggalLahir) mhsData.tanggalLahir = new Date(body.tanggalLahir);
                         await db.mahasiswa.update({
                             where: { userId: user.id },
                             data: mhsData,
@@ -290,6 +301,8 @@ export default new Elysia()
                 name: t.Optional(t.String({ minLength: 1 })),
                 noHp: t.Optional(t.String()),
                 tahunMasuk: t.Optional(t.String()),
+                tempatLahir: t.Optional(t.String()),
+                tanggalLahir: t.Optional(t.String()),
                 image: t.Optional(t.String()),
             }),
         },
