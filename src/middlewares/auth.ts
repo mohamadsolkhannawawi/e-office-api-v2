@@ -16,7 +16,6 @@ export interface RequiredRoleProps {
 export const authGuardPlugin = new Elysia({
     name: "auth",
 })
-    .mount(auth.handler)
     .resolve(async ({ status, request: { headers } }) => {
         const session = await auth.api.getSession({ headers });
 
