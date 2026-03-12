@@ -16,4 +16,10 @@ export const config = {
 
     // Frontend URL for QR code verification links
     FRONTEND_URL: env.get("FE_URL").default("http://localhost:3000").asString(),
+
+    // SSO FSM UNDIP API
+    SSO_API_URL: env
+        .get("SSO_API_URL")
+        .default("https://apps-fsm.undip.ac.id/sso_api")
+        .asString(),
 };

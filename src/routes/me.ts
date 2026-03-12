@@ -7,6 +7,65 @@ const db = Prisma;
 
 export default new Elysia()
     .use(authGuardPlugin)
+    // Cek apakah profil user masih belum lengkap (data placeholder dari SSO auto-register)
+    .get(
+        "/profile-incomplete",
+        async ({ user, set }) => {
+            if (!user) {
+                set.status = 401;
+                return { error: "Unauthorized" };
+            }
+
+            const fullUser = await db.user.findUnique({
+                where: { id: user.id },
+                include: {
+                    mahasiswa: true,
+                    pegawai: true,
+                    userRole: { include: { role: true } },
+                },
+            });
+
+            if (!fullUser) {
+                set.status = 404;
+                return { error: "User not found" };
+            }
+
+            const roles = fullUser.userRole.map((ur) => ur.role.name);
+            const isMahasiswa = roles.includes("MAHASISWA");
+            const isPegawai = roles.some((r) =>
+                ["SUPERVISOR", "MANAJER_TU", "WAKIL_DEKAN_1", "UPA"].includes(r),
+            );
+
+            const missingFields: string[] = [];
+
+            if (isMahasiswa && fullUser.mahasiswa) {
+                if (!fullUser.mahasiswa.noHp || fullUser.mahasiswa.noHp === "-")
+                    missingFields.push("noHp");
+                if (!fullUser.mahasiswa.tahunMasuk)
+                    missingFields.push("tahunMasuk");
+                // NIM placeholder = prefix email (bukan 14 digit angka)
+                if (!/^\d{14}$/.test(fullUser.mahasiswa.nim))
+                    missingFields.push("nim");
+            }
+
+            if (isPegawai && fullUser.pegawai) {
+                if (!fullUser.pegawai.noHp || fullUser.pegawai.noHp === "-")
+                    missingFields.push("noHp");
+            }
+
+            return {
+                isIncomplete: missingFields.length > 0,
+                missingFields,
+                isMahasiswa,
+                isPegawai,
+                profile: {
+                    mahasiswa: fullUser.mahasiswa,
+                    pegawai: fullUser.pegawai,
+                },
+            };
+        },
+        {},
+    )
     .get(
         "/",
         async ({ user, set }) => {
@@ -59,6 +118,114 @@ export default new Elysia()
         },
         {},
     )
+    // GET /api/me/departments — daftar departemen+prodi untuk dropdown di modal SSO
+    .get(
+        "/departments",
+        async ({ user, set }) => {
+            if (!user) {
+                set.status = 401;
+                return { error: "Unauthorized" };
+            }
+            const departments = await db.departemen.findMany({
+                include: {
+                    programStudi: {
+                        where: { deletedAt: null },
+                        orderBy: { name: "asc" },
+                    },
+                },
+                orderBy: { name: "asc" },
+            });
+            return { departments };
+        },
+        {},
+    )
+    // PUT /api/me/complete-profile — simpan semua data profil dari modal SSO pertama kali
+    .put(
+        "/complete-profile",
+        async ({ user, set, body }) => {
+            if (!user) {
+                set.status = 401;
+                return { error: "Unauthorized" };
+            }
+            try {
+                if (body.name) {
+                    await db.user.update({
+                        where: { id: user.id },
+                        data: { name: body.name },
+                    });
+                }
+
+                const mahasiswa = await db.mahasiswa.findUnique({
+                    where: { userId: user.id },
+                });
+
+                if (mahasiswa) {
+                    // Validasi keunikan NIM jika berubah
+                    if (body.nim && body.nim !== mahasiswa.nim) {
+                        const nimConflict = await db.mahasiswa.findFirst({
+                            where: {
+                                nim: body.nim,
+                                NOT: { userId: user.id },
+                            },
+                        });
+                        if (nimConflict) {
+                            set.status = 409;
+                            return { error: "NIM sudah terdaftar untuk mahasiswa lain." };
+                        }
+                    }
+
+                    const mhsData: Record<string, any> = {};
+                    if (body.nim) mhsData.nim = body.nim;
+                    if (body.noHp) mhsData.noHp = body.noHp;
+                    if (body.tahunMasuk) mhsData.tahunMasuk = body.tahunMasuk;
+                    if (body.departemenId) mhsData.departemenId = body.departemenId;
+                    if (body.programStudiId) mhsData.programStudiId = body.programStudiId;
+
+                    if (Object.keys(mhsData).length > 0) {
+                        await db.mahasiswa.update({
+                            where: { userId: user.id },
+                            data: mhsData,
+                        });
+                    }
+                } else {
+                    const pegawai = await db.pegawai.findUnique({
+                        where: { userId: user.id },
+                    });
+                    if (pegawai) {
+                        const pgwData: Record<string, any> = {};
+                        if (body.noHp) pgwData.noHp = body.noHp;
+                        if (body.departemenId) pgwData.departemenId = body.departemenId;
+                        if (body.programStudiId) pgwData.programStudiId = body.programStudiId;
+                        if (Object.keys(pgwData).length > 0) {
+                            await db.pegawai.update({
+                                where: { userId: user.id },
+                                data: pgwData,
+                            });
+                        }
+                    }
+                }
+
+                return { success: true };
+            } catch (error) {
+                console.error("complete-profile error:", error);
+                set.status = 500;
+                return {
+                    error: "Internal Server Error",
+                    message: (error as Error).message,
+                };
+            }
+        },
+        {
+            body: t.Object({
+                name: t.Optional(t.String()),
+                nim: t.Optional(t.String()),
+                noHp: t.Optional(t.String()),
+                tahunMasuk: t.Optional(t.String()),
+                departemenId: t.Optional(t.String()),
+                programStudiId: t.Optional(t.String()),
+            }),
+        },
+    )
     .put(
         "/",
         async ({ user, set, body }) => {
@@ -69,32 +236,33 @@ export default new Elysia()
 
             try {
                 // Update user data
-                const updateData: any = {
-                    name: body.name,
-                };
+                const updateData: any = {};
+                if (body.name) updateData.name = body.name;
+                if (body.image) updateData.image = body.image;
 
-                // Handle image update if provided
-                if (body.image) {
-                    updateData.image = body.image;
-                }
+                const updatedUser =
+                    Object.keys(updateData).length > 0
+                        ? await db.user.update({
+                              where: { id: user.id },
+                              data: updateData,
+                          })
+                        : await db.user.findUnique({ where: { id: user.id } });
 
-                const updatedUser = await db.user.update({
-                    where: { id: user.id },
-                    data: updateData,
-                });
-
-                // Update phone number based on role (mahasiswa or pegawai)
-                if (body.noHp) {
+                // Update phone number / tahunMasuk based on role (mahasiswa or pegawai)
+                if (body.noHp || body.tahunMasuk) {
                     const mahasiswa = await db.mahasiswa.findUnique({
                         where: { userId: user.id },
                     });
 
                     if (mahasiswa) {
+                        const mhsData: Record<string, any> = {};
+                        if (body.noHp) mhsData.noHp = body.noHp;
+                        if (body.tahunMasuk) mhsData.tahunMasuk = body.tahunMasuk;
                         await db.mahasiswa.update({
                             where: { userId: user.id },
-                            data: { noHp: body.noHp },
+                            data: mhsData,
                         });
-                    } else {
+                    } else if (body.noHp) {
                         const pegawai = await db.pegawai.findUnique({
                             where: { userId: user.id },
                         });
@@ -119,8 +287,9 @@ export default new Elysia()
         },
         {
             body: t.Object({
-                name: t.String({ minLength: 1 }),
+                name: t.Optional(t.String({ minLength: 1 })),
                 noHp: t.Optional(t.String()),
+                tahunMasuk: t.Optional(t.String()),
                 image: t.Optional(t.String()),
             }),
         },

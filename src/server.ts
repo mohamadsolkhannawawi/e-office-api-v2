@@ -14,6 +14,7 @@ import letterNumberingRoutes from "./routes/master/letterNumbering.ts";
 import { templatesRoute } from "./routes/templates/index.ts"; // 🔴 TAMBAHAN
 import documentAdminRoute from "./routes/admin/documents.ts"; // 🔴 TAMBAHAN: Admin routes
 import userRoutes from "./routes/user/index.ts"; // User self-service routes
+import { ssoRoutes } from "./lib/sso/routes.ts"; // SSO FSM UNDIP integration
 
 import { PrismaClient } from "@backend/db/index.ts";
 
@@ -34,6 +35,7 @@ export const app = new Elysia()
         }),
     )
     .use(serverTiming())
+    .use(ssoRoutes)
     // EXPLICTLY HANDLE SESSION TO ADD ROLES
     .get("/api/auth/get-session", async ({ request }) => {
         console.log(">>> MANUAL HANDLER HANDLER HIT: /api/auth/get-session");
