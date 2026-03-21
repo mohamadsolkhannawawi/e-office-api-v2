@@ -6,52 +6,61 @@ import { anonymous, bearer } from "better-auth/plugins";
 
 const prisma = new PrismaClient();
 
+const trustedOrigins = process.env.ALLOWED_ORIGINS?.split(",")
+  .map((value) => value.trim())
+  .filter(Boolean)
+  .map((value) => {
+    try {
+      // Better Auth expects origin only (scheme + host + optional port), no path.
+      return new URL(value).origin;
+    } catch {
+      return value;
+    }
+  }) || ["http://localhost:3000"];
+
 /**
  * Better Auth Configuration for FSM UNDIP
  * Version: 1.x
  */
 export const auth = betterAuth({
-    database: prismaAdapter(prisma, {
-        provider: "postgresql",
-    }),
-    experimental: {
-        joins: true,
+  database: prismaAdapter(prisma, {
+    provider: "postgresql",
+  }),
+  experimental: {
+    joins: true,
+  },
+  emailAndPassword: {
+    enabled: true,
+    requireEmailVerification: process.env.ENABLE_EMAIL_VERIFICATION === "true",
+    sendResetPassword: async ({ user, url }) => {
+      console.log(`Password reset URL for ${user.email}: ${url}`);
     },
-    emailAndPassword: {
-        enabled: true,
-        requireEmailVerification:
-            process.env.ENABLE_EMAIL_VERIFICATION === "true",
-        sendResetPassword: async ({ user, url }) => {
-            console.log(`Password reset URL for ${user.email}: ${url}`);
-        },
+  },
+  user: {
+    additionalFields: {
+      emailVerified: {
+        type: "boolean",
+        defaultValue: false,
+        required: false,
+      },
     },
-    user: {
-        additionalFields: {
-            emailVerified: {
-                type: "boolean",
-                defaultValue: false,
-                required: false,
-            },
-        },
+  },
+  session: {
+    expiresIn: 60 * 60 * 24 * 7, // 7 days
+    updateAge: 60 * 60 * 24, // Update session every 24 hours
+    cookieCache: {
+      enabled: true,
+      maxAge: 5 * 60, // Cache for 5 minutes
     },
-    session: {
-        expiresIn: 60 * 60 * 24 * 7, // 7 days
-        updateAge: 60 * 60 * 24, // Update session every 24 hours
-        cookieCache: {
-            enabled: true,
-            maxAge: 5 * 60, // Cache for 5 minutes
-        },
+  },
+  advanced: {
+    defaultCookieAttributes: {
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      httpOnly: true,
     },
-    advanced: {
-        defaultCookieAttributes: {
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
-            httpOnly: true,
-        },
-    },
-    basePath: "/api/auth",
-    trustedOrigins: process.env.ALLOWED_ORIGINS?.split(",") || [
-        "http://localhost:3000",
-    ],
-    plugins: [anonymous(), bearer()],
+  },
+  basePath: "/api/auth",
+  trustedOrigins,
+  plugins: [anonymous(), bearer()],
 });

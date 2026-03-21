@@ -26,7 +26,7 @@ export const app = new Elysia()
     cors({
       origin: env
         .get("ALLOWED_ORIGINS")
-        .default("http://localhost:3000/persuratan-rekomendasi")
+        .default("http://localhost:3000")
         .asString()
         .split(","),
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
