@@ -21,283 +21,274 @@ import { PrismaClient } from "@backend/db/index.ts";
 const prisma = new PrismaClient();
 
 export const app = new Elysia()
-    .use(swagger())
-    .use(
-        cors({
-            origin: env
-                .get("ALLOWED_ORIGINS")
-                .default("http://localhost:3000")
-                .asString()
-                .split(","),
-            methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-            credentials: true,
-            allowedHeaders: ["Content-Type", "Authorization"],
-        }),
-    )
-    .use(serverTiming())
-    .use(ssoRoutes)
-    // EXPLICTLY HANDLE SESSION TO ADD ROLES
-    .get("/api/auth/get-session", async ({ request }) => {
-        console.log(">>> MANUAL HANDLER HANDLER HIT: /api/auth/get-session");
-        console.log("Request Headers:", request.headers.toJSON()); // Log headers
+  .use(swagger())
+  .use(
+    cors({
+      origin: env
+        .get("ALLOWED_ORIGINS")
+        .default("http://localhost:3000/persuratan-rekomendasi")
+        .asString()
+        .split(","),
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      credentials: true,
+      allowedHeaders: ["Content-Type", "Authorization"],
+    }),
+  )
+  .use(serverTiming())
+  .use(ssoRoutes)
+  // EXPLICTLY HANDLE SESSION TO ADD ROLES
+  .get("/api/auth/get-session", async ({ request }) => {
+    console.log(">>> MANUAL HANDLER HANDLER HIT: /api/auth/get-session");
+    console.log("Request Headers:", request.headers.toJSON()); // Log headers
+
+    try {
+      const session = await auth.api.getSession({
+        headers: request.headers,
+      });
+
+      if (session && session.user) {
+        console.log(
+          ">>> SESSION FOUND, FETCHING ROLES FOR:",
+          session.user.email,
+        );
 
         try {
-            const session = await auth.api.getSession({
-                headers: request.headers,
-            });
+          const userRoles = await prisma.userRole.findMany({
+            where: { userId: session.user.id },
+            include: { role: true },
+          });
+          const roles = userRoles.map((ur) => ur.role.name);
+          console.log(">>> ROLES INJECTED:", roles);
 
-            if (session && session.user) {
-                console.log(
-                    ">>> SESSION FOUND, FETCHING ROLES FOR:",
-                    session.user.email,
-                );
-
-                try {
-                    const userRoles = await prisma.userRole.findMany({
-                        where: { userId: session.user.id },
-                        include: { role: true },
-                    });
-                    const roles = userRoles.map((ur) => ur.role.name);
-                    console.log(">>> ROLES INJECTED:", roles);
-
-                    // Set a separate cookie for middleware to access roles
-                    const responseData = {
-                        ...session,
-                        user: {
-                            ...session.user,
-                            roles,
-                        },
-                    };
-
-                    const response = new Response(
-                        JSON.stringify(responseData),
-                        {
-                            headers: {
-                                "Content-Type": "application/json",
-                            },
-                        },
-                    );
-
-                    // Append cookie header
-                    const rolesString = roles.join(",");
-                    const isProd = process.env.NODE_ENV === "production";
-                    response.headers.append(
-                        "Set-Cookie",
-                        `user_roles=${rolesString}; Path=/; HttpOnly; SameSite=Lax; ${isProd ? "Secure;" : ""}`,
-                    );
-
-                    return response;
-                } catch (dbError) {
-                    console.error(
-                        ">>> DATABASE ERROR WHILE FETCHING ROLES:",
-                        dbError,
-                    );
-                    // If database error (e.g., user not found after migration), clear session
-                    console.log(">>> CLEARING INVALID SESSION DUE TO DB ERROR");
-                    return new Response(
-                        JSON.stringify({
-                            session: null,
-                            user: null,
-                            error: "Session invalid, please login again",
-                        }),
-                        {
-                            status: 401,
-                            headers: {
-                                "Content-Type": "application/json",
-                                "Set-Cookie":
-                                    "user_roles=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0", // Clear cookies
-                            },
-                        },
-                    );
-                }
-            }
-
-            console.log(">>> NO SESSION OR USER FOUND IN MANUAL HANDLER");
-            // When no session found, return 401 to trigger frontend redirect to login
-            return new Response(
-                JSON.stringify({
-                    session: null,
-                    user: null,
-                    error: "No active session, please login",
-                    requiresLogin: true,
-                }),
-                {
-                    status: 401,
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Set-Cookie": [
-                            "better-auth.session_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
-                            "better-auth.session_data=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
-                            "user_roles=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
-                        ].join(", "),
-                    },
-                },
-            );
-        } catch (authError: any) {
-            console.error(">>> AUTH ERROR:", authError);
-
-            // Handle P2025: Record not found (common after migrate reset)
-            if (
-                authError.code === "P2025" ||
-                authError.message?.includes("No record was found")
-            ) {
-                console.log(
-                    ">>> SESSION RECORD NOT FOUND (likely after migrate reset) - CLEARING COOKIES",
-                );
-                return new Response(
-                    JSON.stringify({
-                        session: null,
-                        user: null,
-                        error: "Session expired, please login again",
-                    }),
-                    {
-                        status: 401,
-                        headers: {
-                            "Content-Type": "application/json",
-                            "Set-Cookie": [
-                                "better-auth.session_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
-                                "better-auth.session_data=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
-                                "user_roles=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
-                            ].join(", "),
-                        },
-                    },
-                );
-            }
-
-            // Other auth errors
-            console.log(">>> OTHER AUTH ERROR - RETURNING NULL SESSION");
-            return {
-                session: null,
-                user: null,
-                error: authError.message || "Authentication failed",
-            };
-        }
-    })
-    // Custom sign-in interceptor to validate emailVerified BEFORE Better Auth processes the request
-    .post("/api/auth/sign-in/email", async ({ body, request }) => {
-        try {
-            const { email, password, callbackURL } = body as {
-                email: string;
-                password: string;
-                callbackURL?: string;
-            };
-
-            // Pre-validation: Check if user account is active (isActive=true)
-            const user = await prisma.user.findUnique({
-                where: { email },
-                select: {
-                    id: true,
-                    isActive: true,
-                    email: true,
-                    name: true,
-                },
-            });
-
-            // If user found and account is deactivated (isActive=false), reject immediately
-            if (user && !user.isActive) {
-                console.log(
-                    `>>> SIGN-IN BLOCKED: Account deactivated for ${email}`,
-                );
-                return new Response(
-                    JSON.stringify({
-                        error: "Account has been deactivated. Please contact administrator.",
-                        code: "ACCOUNT_DEACTIVATED",
-                    }),
-                    {
-                        status: 403,
-                        headers: { "Content-Type": "application/json" },
-                    },
-                );
-            }
-
-            // If validation passed, create new request with same body for Better Auth
-            console.log(
-                `>>> SIGN-IN: Forwarding to Better Auth handler for ${email}`,
-            );
-            const newRequest = new Request(request.url, {
-                method: request.method,
-                headers: request.headers,
-                body: JSON.stringify({ email, password, callbackURL }),
-            });
-
-            return await auth.handler(newRequest);
-        } catch (error: any) {
-            console.error(">>> CUSTOM SIGN-IN ERROR:", error);
-
-            // Pass through any authentication errors from Better Auth
-            return new Response(
-                JSON.stringify({
-                    error: error.message || "Authentication failed",
-                    code: "AUTH_ERROR",
-                }),
-                {
-                    status: 401,
-                    headers: { "Content-Type": "application/json" },
-                },
-            );
-        }
-    })
-    // Mount Better Auth handler for authentication endpoints with error handling
-    .all("/api/auth/*", async ({ request }) => {
-        try {
-            return await auth.handler(request);
-        } catch (error: any) {
-            console.error(">>> BETTER-AUTH HANDLER ERROR:", error);
-
-            // Handle P2025: Record not found (session cleanup after migrate reset)
-            if (
-                error.code === "P2025" ||
-                error.message?.includes("No record was found")
-            ) {
-                console.log(
-                    ">>> CLEARING STALE SESSION COOKIES AFTER MIGRATE RESET",
-                );
-                return new Response(
-                    JSON.stringify({
-                        error: "Session expired, please login again",
-                        requiresLogin: true,
-                    }),
-                    {
-                        status: 401,
-                        headers: {
-                            "Content-Type": "application/json",
-                            "Set-Cookie": [
-                                "better-auth.session_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
-                                "better-auth.session_data=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
-                                "user_roles=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
-                            ].join(", "),
-                        },
-                    },
-                );
-            }
-
-            // Re-throw other errors
-            throw error;
-        }
-    })
-    // Mount routes under /api prefix to match Next.js rewrite
-    .group("/api", (api) =>
-        api
-            .use(suratRekomendasiRoutes)
-            .use(notificationRoutes)
-            .use(signatureRoutes)
-            .use(stampRoutes)
-            .use(templatesRoute) // 🔴 TAMBAHAN: Template routes
-            .use(documentAdminRoute) // 🔴 TAMBAHAN: Admin document cleanup routes
-            .use(userRoutes) // User self-service routes
-            .group("/master", (master) =>
-                master.use(letterNumberRoutes).use(letterNumberingRoutes),
-            ),
-    )
-    .use(
-        await autoload({
-            prefix: "/api",
-            types: {
-                output: "./autogen.routes.ts",
-                typeName: "App",
-                useExport: true,
+          // Set a separate cookie for middleware to access roles
+          const responseData = {
+            ...session,
+            user: {
+              ...session.user,
+              roles,
             },
+          };
+
+          const response = new Response(JSON.stringify(responseData), {
+            headers: {
+              "Content-Type": "application/json",
+            },
+          });
+
+          // Append cookie header
+          const rolesString = roles.join(",");
+          const isProd = process.env.NODE_ENV === "production";
+          response.headers.append(
+            "Set-Cookie",
+            `user_roles=${rolesString}; Path=/; HttpOnly; SameSite=Lax; ${isProd ? "Secure;" : ""}`,
+          );
+
+          return response;
+        } catch (dbError) {
+          console.error(">>> DATABASE ERROR WHILE FETCHING ROLES:", dbError);
+          // If database error (e.g., user not found after migration), clear session
+          console.log(">>> CLEARING INVALID SESSION DUE TO DB ERROR");
+          return new Response(
+            JSON.stringify({
+              session: null,
+              user: null,
+              error: "Session invalid, please login again",
+            }),
+            {
+              status: 401,
+              headers: {
+                "Content-Type": "application/json",
+                "Set-Cookie":
+                  "user_roles=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0", // Clear cookies
+              },
+            },
+          );
+        }
+      }
+
+      console.log(">>> NO SESSION OR USER FOUND IN MANUAL HANDLER");
+      // When no session found, return 401 to trigger frontend redirect to login
+      return new Response(
+        JSON.stringify({
+          session: null,
+          user: null,
+          error: "No active session, please login",
+          requiresLogin: true,
         }),
-    );
+        {
+          status: 401,
+          headers: {
+            "Content-Type": "application/json",
+            "Set-Cookie": [
+              "better-auth.session_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
+              "better-auth.session_data=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
+              "user_roles=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
+            ].join(", "),
+          },
+        },
+      );
+    } catch (authError: any) {
+      console.error(">>> AUTH ERROR:", authError);
+
+      // Handle P2025: Record not found (common after migrate reset)
+      if (
+        authError.code === "P2025" ||
+        authError.message?.includes("No record was found")
+      ) {
+        console.log(
+          ">>> SESSION RECORD NOT FOUND (likely after migrate reset) - CLEARING COOKIES",
+        );
+        return new Response(
+          JSON.stringify({
+            session: null,
+            user: null,
+            error: "Session expired, please login again",
+          }),
+          {
+            status: 401,
+            headers: {
+              "Content-Type": "application/json",
+              "Set-Cookie": [
+                "better-auth.session_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
+                "better-auth.session_data=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
+                "user_roles=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
+              ].join(", "),
+            },
+          },
+        );
+      }
+
+      // Other auth errors
+      console.log(">>> OTHER AUTH ERROR - RETURNING NULL SESSION");
+      return {
+        session: null,
+        user: null,
+        error: authError.message || "Authentication failed",
+      };
+    }
+  })
+  // Custom sign-in interceptor to validate emailVerified BEFORE Better Auth processes the request
+  .post("/api/auth/sign-in/email", async ({ body, request }) => {
+    try {
+      const { email, password, callbackURL } = body as {
+        email: string;
+        password: string;
+        callbackURL?: string;
+      };
+
+      // Pre-validation: Check if user account is active (isActive=true)
+      const user = await prisma.user.findUnique({
+        where: { email },
+        select: {
+          id: true,
+          isActive: true,
+          email: true,
+          name: true,
+        },
+      });
+
+      // If user found and account is deactivated (isActive=false), reject immediately
+      if (user && !user.isActive) {
+        console.log(`>>> SIGN-IN BLOCKED: Account deactivated for ${email}`);
+        return new Response(
+          JSON.stringify({
+            error:
+              "Account has been deactivated. Please contact administrator.",
+            code: "ACCOUNT_DEACTIVATED",
+          }),
+          {
+            status: 403,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      // If validation passed, create new request with same body for Better Auth
+      console.log(
+        `>>> SIGN-IN: Forwarding to Better Auth handler for ${email}`,
+      );
+      const newRequest = new Request(request.url, {
+        method: request.method,
+        headers: request.headers,
+        body: JSON.stringify({ email, password, callbackURL }),
+      });
+
+      return await auth.handler(newRequest);
+    } catch (error: any) {
+      console.error(">>> CUSTOM SIGN-IN ERROR:", error);
+
+      // Pass through any authentication errors from Better Auth
+      return new Response(
+        JSON.stringify({
+          error: error.message || "Authentication failed",
+          code: "AUTH_ERROR",
+        }),
+        {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+  })
+  // Mount Better Auth handler for authentication endpoints with error handling
+  .all("/api/auth/*", async ({ request }) => {
+    try {
+      return await auth.handler(request);
+    } catch (error: any) {
+      console.error(">>> BETTER-AUTH HANDLER ERROR:", error);
+
+      // Handle P2025: Record not found (session cleanup after migrate reset)
+      if (
+        error.code === "P2025" ||
+        error.message?.includes("No record was found")
+      ) {
+        console.log(">>> CLEARING STALE SESSION COOKIES AFTER MIGRATE RESET");
+        return new Response(
+          JSON.stringify({
+            error: "Session expired, please login again",
+            requiresLogin: true,
+          }),
+          {
+            status: 401,
+            headers: {
+              "Content-Type": "application/json",
+              "Set-Cookie": [
+                "better-auth.session_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
+                "better-auth.session_data=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
+                "user_roles=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
+              ].join(", "),
+            },
+          },
+        );
+      }
+
+      // Re-throw other errors
+      throw error;
+    }
+  })
+  // Mount routes under /api prefix to match Next.js rewrite
+  .group("/api", (api) =>
+    api
+      .use(suratRekomendasiRoutes)
+      .use(notificationRoutes)
+      .use(signatureRoutes)
+      .use(stampRoutes)
+      .use(templatesRoute) // 🔴 TAMBAHAN: Template routes
+      .use(documentAdminRoute) // 🔴 TAMBAHAN: Admin document cleanup routes
+      .use(userRoutes) // User self-service routes
+      .group("/master", (master) =>
+        master.use(letterNumberRoutes).use(letterNumberingRoutes),
+      ),
+  )
+  .use(
+    await autoload({
+      prefix: "/api",
+      types: {
+        output: "./autogen.routes.ts",
+        typeName: "App",
+        useExport: true,
+      },
+    }),
+  );
 
 export type App = typeof app;

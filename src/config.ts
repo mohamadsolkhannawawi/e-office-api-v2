@@ -1,25 +1,29 @@
 import env from "env-var";
 
 export const config = {
-    NODE_ENV: env
-        .get("NODE_ENV")
-        .default("development")
-        .asEnum(["production", "test", "development"]),
+  NODE_ENV: env
+    .get("NODE_ENV")
+    .default("development")
+    .asEnum(["production", "test", "development"]),
 
-    PORT: env.get("PORT").default(3000).asPortNumber(),
-    API_URL: env
-        .get("API_URL")
-        .default(`https://${env.get("PUBLIC_DOMAIN").asString()}`)
-        .asString(),
-    DATABASE_URL: env.get("DATABASE_URL").required().asString(),
-    LOCK_STORE: env.get("LOCK_STORE").default("memory").asEnum(["memory"]),
+  PORT: env.get("PORT").default(3000).asPortNumber(),
+  API_URL: env
+    .get("API_URL")
+    .default(`https://${env.get("PUBLIC_DOMAIN").asString()}`)
+    .asString(),
+  DATABASE_URL: env.get("DATABASE_URL").required().asString(),
+  LOCK_STORE: env.get("LOCK_STORE").default("memory").asEnum(["memory"]),
 
-    // Frontend URL for QR code verification links
-    FRONTEND_URL: env.get("FE_URL").default("http://localhost:3000").asString(),
+  // Frontend URL for QR code verification links
+  // Include prefix /persuratan-rekomendasi untuk production compatibility
+  FRONTEND_URL: env
+    .get("FE_URL")
+    .default("http://localhost:3000/persuratan-rekomendasi")
+    .asString(),
 
-    // SSO FSM UNDIP API
-    SSO_API_URL: env
-        .get("SSO_API_URL")
-        .default("https://apps-fsm.undip.ac.id/sso_api")
-        .asString(),
+  // SSO FSM UNDIP API
+  SSO_API_URL: env
+    .get("SSO_API_URL")
+    .default("https://apps-fsm.undip.ac.id/sso_api")
+    .asString(),
 };
