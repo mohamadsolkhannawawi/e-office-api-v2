@@ -108,7 +108,8 @@ MINIO_BUCKET_NAME=documents
 
 # JWT & Security
 JWT_SECRET=your_super_secret_key_change_me
-ALLOWED_ORIGINS=http://localhost:3000
+# ALLOWED_ORIGINS perlu include prefix /persuratan-rekomendasi untuk development dengan Next.js basePath
+ALLOWED_ORIGINS=http://localhost:3000/persuratan-rekomendasi
 ```
 
 ### 2. Database Migration
