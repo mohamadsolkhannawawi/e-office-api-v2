@@ -1,14 +1,14 @@
-// pegawai.service.ts
+// Layanan untuk model Pegawai.
 
 import { Prisma, type Pegawai } from "@backend/db/index.ts";
 import type {
-	PegawaiDelegate,
-	PegawaiInclude,
+  PegawaiDelegate,
+  PegawaiInclude,
 } from "@backend/generated/prisma/models.ts";
 import { CRUD } from "./__basicCRUD.ts";
 
 export abstract class PegawaiService extends CRUD<
-	Pegawai,
-	PegawaiDelegate,
-	PegawaiInclude
+  Pegawai,
+  PegawaiDelegate,
+  PegawaiInclude
 >(Prisma.pegawai) {}
