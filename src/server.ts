@@ -11,10 +11,10 @@ import signatureRoutes from "./routes/signatures.ts";
 import stampRoutes from "./routes/stamps.ts";
 import letterNumberRoutes from "./routes/master/letterNumber.ts";
 import letterNumberingRoutes from "./routes/master/letterNumbering.ts";
-import { templatesRoute } from "./routes/templates/index.ts"; // 🔴 TAMBAHAN
-import documentAdminRoute from "./routes/admin/documents.ts"; // 🔴 TAMBAHAN: Admin routes
-import userRoutes from "./routes/user/index.ts"; // User self-service routes
-import { ssoRoutes } from "./lib/sso/routes.ts"; // SSO FSM UNDIP integration
+import { templatesRoute } from "./routes/templates/index.ts"; // Rute template
+import documentAdminRoute from "./routes/admin/documents.ts"; // Rute admin dokumen
+import userRoutes from "./routes/user/index.ts"; // Rute self-service pengguna
+import { ssoRoutes } from "./lib/sso/routes.ts"; // Integrasi SSO FSM UNDIP
 
 import { PrismaClient } from "@backend/db/index.ts";
 
@@ -36,10 +36,10 @@ export const app = new Elysia()
   )
   .use(serverTiming())
   .use(ssoRoutes)
-  // EXPLICTLY HANDLE SESSION TO ADD ROLES
+  // Menangani session secara eksplisit untuk menambahkan role pengguna.
   .get("/api/auth/get-session", async ({ request }) => {
     console.log(">>> MANUAL HANDLER HANDLER HIT: /api/auth/get-session");
-    console.log("Request Headers:", request.headers.toJSON()); // Log headers
+    console.log("Request Headers:", request.headers.toJSON()); // Log header request
 
     try {
       const session = await auth.api.getSession({
@@ -60,7 +60,7 @@ export const app = new Elysia()
           const roles = userRoles.map((ur) => ur.role.name);
           console.log(">>> ROLES INJECTED:", roles);
 
-          // Set a separate cookie for middleware to access roles
+          // Set cookie terpisah agar middleware dapat membaca role.
           const responseData = {
             ...session,
             user: {
@@ -75,7 +75,7 @@ export const app = new Elysia()
             },
           });
 
-          // Append cookie header
+          // Tambahkan header cookie.
           const rolesString = roles.join(",");
           const isProd = process.env.NODE_ENV === "production";
           response.headers.append(
@@ -86,7 +86,7 @@ export const app = new Elysia()
           return response;
         } catch (dbError) {
           console.error(">>> DATABASE ERROR WHILE FETCHING ROLES:", dbError);
-          // If database error (e.g., user not found after migration), clear session
+          // Jika terjadi error database (misalnya user tidak ditemukan setelah migrasi), bersihkan session.
           console.log(">>> CLEARING INVALID SESSION DUE TO DB ERROR");
           return new Response(
             JSON.stringify({
@@ -99,7 +99,7 @@ export const app = new Elysia()
               headers: {
                 "Content-Type": "application/json",
                 "Set-Cookie":
-                  "user_roles=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0", // Clear cookies
+                  "user_roles=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0", // Hapus cookie
               },
             },
           );
@@ -107,7 +107,7 @@ export const app = new Elysia()
       }
 
       console.log(">>> NO SESSION OR USER FOUND IN MANUAL HANDLER");
-      // When no session found, return 401 to trigger frontend redirect to login
+      // Saat session tidak ditemukan, kembalikan 401 agar frontend redirect ke halaman login.
       return new Response(
         JSON.stringify({
           session: null,
@@ -130,7 +130,7 @@ export const app = new Elysia()
     } catch (authError: any) {
       console.error(">>> AUTH ERROR:", authError);
 
-      // Handle P2025: Record not found (common after migrate reset)
+      // Tangani P2025: record tidak ditemukan (umum setelah migrate reset).
       if (
         authError.code === "P2025" ||
         authError.message?.includes("No record was found")
@@ -158,7 +158,7 @@ export const app = new Elysia()
         );
       }
 
-      // Other auth errors
+      // Error autentikasi lainnya.
       console.log(">>> OTHER AUTH ERROR - RETURNING NULL SESSION");
       return {
         session: null,
@@ -167,7 +167,7 @@ export const app = new Elysia()
       };
     }
   })
-  // Custom sign-in interceptor to validate emailVerified BEFORE Better Auth processes the request
+  // Interceptor sign-in kustom untuk validasi status akun sebelum diproses Better Auth.
   .post("/api/auth/sign-in/email", async ({ body, request }) => {
     try {
       const { email, password, callbackURL } = body as {
@@ -176,7 +176,7 @@ export const app = new Elysia()
         callbackURL?: string;
       };
 
-      // Pre-validation: Check if user account is active (isActive=true)
+      // Pra-validasi: periksa apakah akun pengguna aktif (isActive=true).
       const user = await prisma.user.findUnique({
         where: { email },
         select: {
@@ -187,7 +187,7 @@ export const app = new Elysia()
         },
       });
 
-      // If user found and account is deactivated (isActive=false), reject immediately
+      // Jika user ditemukan tetapi akun nonaktif (isActive=false), tolak segera.
       if (user && !user.isActive) {
         console.log(`>>> SIGN-IN BLOCKED: Account deactivated for ${email}`);
         return new Response(
@@ -203,7 +203,7 @@ export const app = new Elysia()
         );
       }
 
-      // If validation passed, create new request with same body for Better Auth
+      // Jika validasi lolos, buat request baru dengan body yang sama untuk Better Auth.
       console.log(
         `>>> SIGN-IN: Forwarding to Better Auth handler for ${email}`,
       );
@@ -217,7 +217,7 @@ export const app = new Elysia()
     } catch (error: any) {
       console.error(">>> CUSTOM SIGN-IN ERROR:", error);
 
-      // Pass through any authentication errors from Better Auth
+      // Teruskan error autentikasi dari Better Auth.
       return new Response(
         JSON.stringify({
           error: error.message || "Authentication failed",
@@ -230,14 +230,14 @@ export const app = new Elysia()
       );
     }
   })
-  // Mount Better Auth handler for authentication endpoints with error handling
+  // Pasang handler Better Auth untuk endpoint autentikasi dengan penanganan error.
   .all("/api/auth/*", async ({ request }) => {
     try {
       return await auth.handler(request);
     } catch (error: any) {
       console.error(">>> BETTER-AUTH HANDLER ERROR:", error);
 
-      // Handle P2025: Record not found (session cleanup after migrate reset)
+      // Tangani P2025: record tidak ditemukan (pembersihan session setelah migrate reset).
       if (
         error.code === "P2025" ||
         error.message?.includes("No record was found")
@@ -262,20 +262,20 @@ export const app = new Elysia()
         );
       }
 
-      // Re-throw other errors
+      // Lempar ulang error lainnya.
       throw error;
     }
   })
-  // Mount routes under /api prefix to match Next.js rewrite
+  // Pasang seluruh rute di bawah prefix /api agar selaras dengan rewrite Next.js.
   .group("/api", (api) =>
     api
       .use(suratRekomendasiRoutes)
       .use(notificationRoutes)
       .use(signatureRoutes)
       .use(stampRoutes)
-      .use(templatesRoute) // 🔴 TAMBAHAN: Template routes
-      .use(documentAdminRoute) // 🔴 TAMBAHAN: Admin document cleanup routes
-      .use(userRoutes) // User self-service routes
+      .use(templatesRoute) // Rute template
+      .use(documentAdminRoute) // Rute admin untuk cleanup dokumen
+      .use(userRoutes) // Rute self-service pengguna
       .group("/master", (master) =>
         master.use(letterNumberRoutes).use(letterNumberingRoutes),
       ),

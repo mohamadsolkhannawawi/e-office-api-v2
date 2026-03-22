@@ -14,14 +14,14 @@ export const config = {
   DATABASE_URL: env.get("DATABASE_URL").required().asString(),
   LOCK_STORE: env.get("LOCK_STORE").default("memory").asEnum(["memory"]),
 
-  // Frontend URL for QR code verification links
-  // Include prefix /persuratan-rekomendasi untuk production compatibility
+  // URL frontend untuk tautan verifikasi kode QR.
+  // Gunakan prefix /persuratan-rekomendasi agar kompatibel di production.
   FRONTEND_URL: env
     .get("FE_URL")
     .default("http://localhost:3000/persuratan-rekomendasi")
     .asString(),
 
-  // SSO FSM UNDIP API
+  // Endpoint API SSO FSM UNDIP.
   SSO_API_URL: env
     .get("SSO_API_URL")
     .default("https://apps-fsm.undip.ac.id/sso_api")
