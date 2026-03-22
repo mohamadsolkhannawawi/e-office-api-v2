@@ -3,127 +3,121 @@ import { auth } from "@backend/lib/auth.ts";
 import { Prisma } from "@backend/db/index.ts";
 
 /**
- * Public Authentication Routes
- * Handles login, logout, registration, and password reset via Better Auth
+ * [ROUTE] Public Authentication Routes
+ * Handles sign-in and session retrieval via Better Auth.
  */
 export const authRoutes = new Elysia({
-    prefix: "/auth",
-    tags: ["Authentication"],
+  prefix: "/auth",
+  tags: ["Authentication"],
 })
-    /**
-     * Custom Sign-In with Account Status Validation
-     * Validates emailVerified before allowing login
-     */
-    .post(
-        "/sign-in/email",
-        async ({ body, set, request }) => {
-            try {
-                // First, find user to check if account is active
-                const user = await Prisma.user.findUnique({
-                    where: { email: body.email },
-                    select: {
-                        id: true,
-                        email: true,
-                        isActive: true,
-                    },
-                });
-
-                // Check if user exists and is deactivated
-                if (user && !user.isActive) {
-                    console.log(
-                        `[Auth] Blocked login attempt for deactivated user: ${user.email}`,
-                    );
-                    set.status = 403;
-                    return {
-                        error: "Account Deactivated",
-                        message:
-                            "Your account has been deactivated. Please contact administrator for assistance.",
-                    };
-                }
-
-                // If account is active or user doesn't exist yet, proceed with Better Auth
-                // Better Auth will handle password verification
-                const response = await auth.api.signInEmail({
-                    body,
-                    headers: request.headers,
-                });
-
-                // If sign-in successful but user became deactivated during process, delete session
-                if (
-                    response &&
-                    typeof response === "object" &&
-                    "user" in response
-                ) {
-                    const currentUser = await Prisma.user.findUnique({
-                        where: { id: (response.user as any).id },
-                        select: { isActive: true },
-                    });
-
-                    if (currentUser && !currentUser.isActive) {
-                        // Delete the session that was just created
-                        if ("session" in response && response.session) {
-                            await Prisma.session
-                                .delete({
-                                    where: {
-                                        token: (response.session as any).token,
-                                    },
-                                })
-                                .catch(() => {});
-                        }
-                        console.log(
-                            `[Auth] Deleted session for deactivated user during sign-in`,
-                        );
-                        set.status = 403;
-                        return {
-                            error: "Account Deactivated",
-                            message:
-                                "Your account has been deactivated. Please contact administrator.",
-                        };
-                    }
-                }
-
-                return response;
-            } catch (error) {
-                console.error("[Auth] Sign-in error:", error);
-                set.status = 401;
-                return {
-                    error: "Authentication Failed",
-                    message:
-                        error instanceof Error
-                            ? error.message
-                            : "Invalid credentials",
-                };
-            }
-        },
-        {
-            body: t.Object({
-                email: t.String({ format: "email" }),
-                password: t.String(),
-                rememberMe: t.Optional(t.Boolean()),
-            }),
-        },
-    )
-    /**
-     * Get current session
-     * Returns user info if authenticated
-     */
-    .get("/session", async ({ request }) => {
-        const session = await auth.api.getSession({
-            headers: request.headers,
+  /**
+   * Custom Sign-In with Account Status Validation
+   * Validates account active status before allowing login
+   */
+  .post(
+    "/sign-in/email",
+    async ({ body, set, request }) => {
+      try {
+        // First, find user to check if account is active
+        const user = await Prisma.user.findUnique({
+          where: { email: body.email },
+          select: {
+            id: true,
+            email: true,
+            isActive: true,
+          },
         });
 
-        if (!session) {
-            return {
-                user: null,
-                session: null,
-            };
+        // Check if user exists and is deactivated
+        if (user && !user.isActive) {
+          console.log(
+            `[WARNING] [Auth] Blocked login attempt for deactivated user: ${user.email}`,
+          );
+          set.status = 403;
+          return {
+            error: "Account Deactivated",
+            message:
+              "Your account has been deactivated. Please contact administrator for assistance.",
+          };
         }
 
+        // If account is active or user doesn't exist yet, proceed with Better Auth
+        // Better Auth will handle password verification
+        const response = await auth.api.signInEmail({
+          body,
+          headers: request.headers,
+        });
+
+        // If sign-in successful but user became deactivated during process, delete session
+        if (response && typeof response === "object" && "user" in response) {
+          const currentUser = await Prisma.user.findUnique({
+            where: { id: (response.user as any).id },
+            select: { isActive: true },
+          });
+
+          if (currentUser && !currentUser.isActive) {
+            // Delete the session that was just created
+            if ("session" in response && response.session) {
+              await Prisma.session
+                .delete({
+                  where: {
+                    token: (response.session as any).token,
+                  },
+                })
+                .catch(() => {});
+            }
+            console.log(
+              "[WARNING] [Auth] Deleted session for deactivated user during sign-in",
+            );
+            set.status = 403;
+            return {
+              error: "Account Deactivated",
+              message:
+                "Your account has been deactivated. Please contact administrator.",
+            };
+          }
+        }
+
+        return response;
+      } catch (error) {
+        console.error("[Auth] Sign-in error:", error);
+        set.status = 401;
         return {
-            user: session.user,
-            session: session.session,
+          error: "Authentication Failed",
+          message:
+            error instanceof Error ? error.message : "Invalid credentials",
         };
+      }
+    },
+    {
+      body: t.Object({
+        email: t.String({ format: "email" }),
+        password: t.String(),
+        rememberMe: t.Optional(t.Boolean()),
+      }),
+    },
+  )
+  /**
+   * Get current session
+   * Returns user info if authenticated
+   */
+  .get("/session", async ({ request }) => {
+    const session = await auth.api.getSession({
+      headers: request.headers,
     });
+
+    if (!session) {
+      return {
+        user: null,
+        session: null,
+      };
+    }
+
+    return {
+      user: session.user,
+      session: session.session,
+    };
+  });
 
 /**
  * Better Auth provides these endpoints automatically:
