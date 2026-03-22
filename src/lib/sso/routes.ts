@@ -56,11 +56,12 @@ export const ssoRoutes = new Elysia()
         }
 
         // 3. Mapping SSO role ke DB role name
-        // SSO role: "mahasiswa" | "lecturer" | "staff"
+        // SSO role (actual dari payload JWT): "mahasiswa" | "dosen" | "staff" | "superadmin"
         const ssoRoleToDbRole: Record<string, string> = {
             mahasiswa: "MAHASISWA",
-            lecturer: "SUPERVISOR",
+            dosen: "SUPERVISOR",
             staff: "SUPERVISOR",
+            superadmin: "SUPER_ADMIN",
         };
         const targetRoleName = ssoRoleToDbRole[ssoUser.role] ?? null;
 
@@ -113,21 +114,26 @@ export const ssoRoutes = new Elysia()
                     });
                     console.log(`[SSO] Created mahasiswa profile for ${email}`);
                 }
-            } else if (ssoUser.role === "lecturer" || ssoUser.role === "staff") {
+            } else if (ssoUser.role === "dosen" || ssoUser.role === "staff" || ssoUser.role === "superadmin") {
                 const existing = await Prisma.pegawai.findUnique({ where: { userId } });
                 if (!existing) {
                     const nip = email.split("@")[0] ?? email;
+                    const jabatanMap: Record<string, string> = {
+                        dosen: "Dosen",
+                        staff: "Staff",
+                        superadmin: "Administrator Sistem",
+                    };
                     await Prisma.pegawai.create({
                         data: {
                             userId,
                             nip,
-                            jabatan: ssoUser.role === "lecturer" ? "Dosen" : "Staff",
+                            jabatan: jabatanMap[ssoUser.role] ?? "Staff",
                             noHp: "-",
                             departemenId: defaultDept.id,
                             programStudiId: defaultProdi.id,
                         },
                     });
-                    console.log(`[SSO] Created pegawai profile for ${email}`);
+                    console.log(`[SSO] Created pegawai profile for ${email} (${ssoUser.role})`);
                 }
             }
         };
