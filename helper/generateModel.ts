@@ -1,30 +1,38 @@
-// generateService.ts
-import * as fs from 'fs';
-import * as path from 'path';
+// generateService.ts - Generator untuk membuat file service dari model Prisma
+// Script ini secara otomatis membuat boilerplate service class dengan CRUD operations
 
-// --- Configuration ---
-const BASE_PATH: string = path.join(process.cwd(), 'src', 'services', 'database_models');
-const CRUD_PATH: string = './__basicCRUD.ts'; // Relative path from the new service file to your CRUD file
+import * as fs from "fs";
+import * as path from "path";
 
-// --- Template Function ---
+// [KONFIGURASI] Path dan settings utama
+const BASE_PATH: string = path.join(
+  process.cwd(),
+  "src",
+  "services",
+  "database_models",
+);
+const CRUD_PATH: string = "./__basicCRUD.ts"; // Relative path from the new service file to your CRUD file
+
+// [TEMPLATE] Fungsi untuk menghasilkan konten template service
 function generateTemplate(modelName: string): string {
-    // 1. Capitalize the first letter (e.g., 'user' -> 'User')
-    const capitalizedModelName: string = modelName.charAt(0).toUpperCase() + modelName.slice(1);
-    
-    // 2. Define the singular type name (e.g., 'User')
-    const TModel: string = capitalizedModelName;
-    
-    // 3. Define the delegate type name (e.g., 'UserDelegate')
-    const TDelegate: string = `${capitalizedModelName}Delegate`;
-    
-    // 4. Define the Prisma client delegate property (e.g., 'Prisma.user')
-    // We use lowercase for the Prisma property name
-    const prismaDelegateProperty: string = `Prisma.${modelName.toLowerCase()}`;
-    
-    // 5. Define the service class name (e.g., 'UserService')
-    const serviceClassName: string = `${capitalizedModelName}Service`;
+  // [STEP 1] Kapitalisasi huruf pertama (contoh: 'user' -> 'User')
+  const capitalizedModelName: string =
+    modelName.charAt(0).toUpperCase() + modelName.slice(1);
 
-    return `// ${modelName.toLowerCase()}.service.ts
+  // [STEP 2] Tentukan nama type model (contoh: 'User')
+  const TModel: string = capitalizedModelName;
+
+  // [STEP 3] Tentukan nama delegate type (contoh: 'UserDelegate')
+  const TDelegate: string = `${capitalizedModelName}Delegate`;
+
+  // [STEP 4] Tentukan property delegate Prisma client (contoh: 'Prisma.user')
+  // Menggunakan lowercase untuk nama property Prisma
+  const prismaDelegateProperty: string = `Prisma.${modelName.toLowerCase()}`;
+
+  // [STEP 5] Tentukan nama class service (contoh: 'UserService')
+  const serviceClassName: string = `${capitalizedModelName}Service`;
+
+  return `// ${modelName.toLowerCase()}.service.ts
 
 import { Prisma, type ${TModel} } from "@db";
 // NOTE: Adjust the path below if your generated types are in a different location
@@ -37,40 +45,40 @@ export abstract class ${serviceClassName} extends CRUD<${TModel}, ${TDelegate}>(
 `;
 }
 
-// --- Main Execution Logic ---
+// [MAIN] Logika utama eksekusi generator
 function generateServiceFile(): void {
-    // Get the model name from command line arguments (process.argv[2])
-    const modelNameArg = process.argv[2]; 
+  // [INPUT] Ambil nama model dari argument command line (process.argv[2])
+  const modelNameArg = process.argv[2];
 
-    if (!modelNameArg) {
-        console.error('🛑 Error: Please provide a model name.');
-        console.log('Usage: npx ts-node generateService.ts <ModelName>');
-        return;
-    }
+  if (!modelNameArg) {
+    console.error("[ERROR] Please provide a model name.");
+    console.log("Usage: npx ts-node generateService.ts <ModelName>");
+    return;
+  }
 
-    const modelName = modelNameArg.toLowerCase();
+  const modelName = modelNameArg.toLowerCase();
 
-    // Ensure model name is lowercased for the file name (e.g., 'user')
-    const fileName: string = `${modelName}.service.ts`;
-    const filePath: string = path.join(BASE_PATH, fileName);
-    
-    // Generate the content
-    const content: string = generateTemplate(modelName);
+  // [NAMING] Pastikan nama model lowercase untuk nama file (contoh: 'user')
+  const fileName: string = `${modelName}.service.ts`;
+  const filePath: string = path.join(BASE_PATH, fileName);
 
-    // Create the output directory if it doesn't exist
-    if (!fs.existsSync(BASE_PATH)) {
-        fs.mkdirSync(BASE_PATH, { recursive: true });
-        console.log(`✅ Created directory: ${BASE_PATH}`);
-    }
+  // [GENERATE] Buat konten template
+  const content: string = generateTemplate(modelName);
 
-    // Write the file
-    try {
-        fs.writeFileSync(filePath, content, 'utf8');
-        console.log(`✨ Successfully generated service: ${fileName}`);
-        console.log(`📁 File created at: ${filePath}`);
-    } catch (err) {
-        console.error(`❌ Failed to write file ${fileName}:`, err);
-    }
+  // [MKDIR] Buat direktori output jika belum ada
+  if (!fs.existsSync(BASE_PATH)) {
+    fs.mkdirSync(BASE_PATH, { recursive: true });
+    console.log(`[SUCCESS] Directory created: ${BASE_PATH}`);
+  }
+
+  // [WRITE] Tulis file ke disk
+  try {
+    fs.writeFileSync(filePath, content, "utf8");
+    console.log(`[SUCCESS] Service generated: ${fileName}`);
+    console.log(`[INFO] File created at: ${filePath}`);
+  } catch (err) {
+    console.error(`[ERROR] Failed to write file ${fileName}:`, err);
+  }
 }
 
 // Run the generator
