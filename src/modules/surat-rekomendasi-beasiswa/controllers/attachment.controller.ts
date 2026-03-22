@@ -6,216 +6,287 @@ import { Readable } from "node:stream";
 const db = Prisma;
 
 export class AttachmentController {
-    static async uploadAttachment({
-        params,
-        body,
-        set,
-    }: {
-        params: any;
-        body: any;
-        set: any;
-    }) {
-        try {
-            const { letterInstanceId } = params;
-            const { file, category } = body;
+  /**
+   * [ENDPOINT] uploadAttachment - Upload attachment file untuk letter instance
+   *
+   * Upload file attachment (Utama atau Tambahan) ke letter instance tertentu.
+   * File di-simpan di MinIO dan metadata di-record di database.
+   *
+   * @param params - { letterInstanceId }
+   * @param body - { file, category } dimana category = "Utama" | "Tambahan"
+   * @param set - HTTP response setter
+   * @returns { success: boolean, data: attachment }
+   */
+  static async uploadAttachment({
+    params,
+    body,
+    set,
+  }: {
+    params: any;
+    body: any;
+    set: any;
+  }) {
+    try {
+      const { letterInstanceId } = params;
+      const { file, category } = body;
 
-            console.log("📤 [uploadAttachment] Started with:", {
-                letterInstanceId,
-                category,
-                fileName: file?.name,
-            });
+      console.log("[PROCESSING] Upload attachment dimulai dengan:", {
+        letterInstanceId,
+        category,
+        fileName: file?.name,
+      });
 
-            // Verify letter instance exists - use findFirst without soft delete filter
-            console.log(
-                `🔍 [uploadAttachment] Checking if letterInstance exists: ${letterInstanceId}`,
-            );
-            const letterInstance = await db.letterInstance.findFirst({
-                where: { id: letterInstanceId },
-            });
+      // Verifikasi letter instance exists - gunakan findFirst tanpa soft delete filter
+      console.log("[INFO] Cek apakah letterInstance ada:", letterInstanceId);
+      const letterInstance = await db.letterInstance.findFirst({
+        where: { id: letterInstanceId },
+      });
 
-            console.log(
-                "📦 [uploadAttachment] letterInstance query result:",
-                letterInstance
-                    ? {
-                          FOUND: true,
-                          id: letterInstance.id,
-                          scholarshipName: letterInstance.scholarshipName,
-                          deletedAt: letterInstance.deletedAt,
-                      }
-                    : "NOT FOUND",
-            );
-
-            if (!letterInstance) {
-                console.error(
-                    `❌ [uploadAttachment] Letter instance not found for ID: ${letterInstanceId}`,
-                    "Possible reasons: not created yet, deleted, or wrong ID",
-                );
-                set.status = 404;
-                return { error: "Letter instance not found" };
+      console.log(
+        "[INFO] Query hasil letterInstance:",
+        letterInstance
+          ? {
+              FOUND: true,
+              id: letterInstance.id,
+              scholarshipName: letterInstance.scholarshipName,
+              deletedAt: letterInstance.deletedAt,
             }
+          : "NOT FOUND",
+      );
 
-            // Skip ownership check for now
+      if (!letterInstance) {
+        console.error(
+          "[ERROR] Letter instance tidak ditemukan untuk ID:",
+          letterInstanceId,
+          "Kemungkinan: belum dibuat, sudah dihapus, atau ID salah",
+        );
+        set.status = 404;
+        return { error: "Letter instance not found" };
+      }
 
-            // Upload attachment
-            const attachment = await AttachmentService.uploadAttachment({
-                file,
-                letterInstanceId,
-                userId: letterInstance.createdById,
-                category: category as "Utama" | "Tambahan",
-            });
+      // Abaikan ownership check untuk sekarang
 
-            set.status = 201;
-            return {
-                success: true,
-                data: attachment,
-            };
-        } catch (error) {
-            console.error("Upload attachment error:", error);
-            set.status = 500;
-            return {
-                error: error instanceof Error ? error.message : "Upload failed",
-            };
-        }
+      // Upload attachment
+      const attachment = await AttachmentService.uploadAttachment({
+        file,
+        letterInstanceId,
+        userId: letterInstance.createdById,
+        category: category as "Utama" | "Tambahan",
+      });
+
+      set.status = 201;
+      console.log("[SUCCESS] Attachment berhasil diupload:", {
+        attachmentId: attachment.id,
+        letterInstanceId,
+        category,
+        filename: attachment.filename,
+      });
+      return {
+        success: true,
+        data: attachment,
+      };
+    } catch (error) {
+      console.error("[ERROR] Upload attachment gagal:", error);
+      set.status = 500;
+      return {
+        error: error instanceof Error ? error.message : "Upload failed",
+      };
     }
+  }
 
-    static async getAttachments({ params, set }: { params: any; set: any }) {
-        try {
-            const { letterInstanceId } = params;
+  /**
+   * [ENDPOINT] getAttachments - Fetch semua attachments untuk letter instance
+   *
+   * Retrieve daftar semua attachment (Utama dan Tambahan) yang ter-link pada
+   * letter instance tertentu dengan metadata lengkap.
+   *
+   * @param params - { letterInstanceId }
+   * @param set - HTTP response setter
+   * @returns { success: boolean, data: attachments[] }
+   */
+  static async getAttachments({ params, set }: { params: any; set: any }) {
+    try {
+      const { letterInstanceId } = params;
 
-            console.log(
-                "📋 [getAttachments] Fetching for letterInstanceId:",
-                letterInstanceId,
-            );
+      console.log(
+        "[INFO] Fetch attachments untuk letterInstanceId:",
+        letterInstanceId,
+      );
 
-            // Verify letter instance exists - use findFirst without soft delete filter
-            const letterInstance = await db.letterInstance.findFirst({
-                where: { id: letterInstanceId },
-            });
+      // Verifikasi letter instance exists - gunakan findFirst tanpa soft delete filter
+      const letterInstance = await db.letterInstance.findFirst({
+        where: { id: letterInstanceId },
+      });
 
-            if (!letterInstance) {
-                console.error(
-                    `❌ [getAttachments] Letter instance not found: ${letterInstanceId}`,
-                );
-                set.status = 404;
-                return { error: "Letter instance not found" };
-            }
+      if (!letterInstance) {
+        console.error(
+          "[ERROR] Letter instance tidak ditemukan:",
+          letterInstanceId,
+        );
+        set.status = 404;
+        return { error: "Letter instance not found" };
+      }
 
-            // Skip ownership check for now
+      // Abaikan ownership check untuk sekarang
 
-            // Get attachments
-            const attachments =
-                await AttachmentService.getLetterAttachments(letterInstanceId);
+      // Ambil attachments
+      const attachments =
+        await AttachmentService.getLetterAttachments(letterInstanceId);
 
-            return {
-                success: true,
-                data: attachments,
-            };
-        } catch (error) {
-            console.error("Get attachments error:", error);
-            set.status = 500;
-            return {
-                error:
-                    error instanceof Error
-                        ? error.message
-                        : "Failed to fetch attachments",
-            };
-        }
+      console.log("[SUCCESS] Attachments berhasil diambil:", {
+        letterInstanceId,
+        count: attachments.length,
+      });
+      return {
+        success: true,
+        data: attachments,
+      };
+    } catch (error) {
+      console.error("[ERROR] Get attachments gagal:", error);
+      set.status = 500;
+      return {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch attachments",
+      };
     }
+  }
 
-    static async deleteAttachment({ params, set }: { params: any; set: any }) {
-        try {
-            const { attachmentId } = params;
+  /**
+   * [ENDPOINT] deleteAttachment - Hapus attachment berdasarkan ID
+   *
+   * Soft delete atau hard delete attachment dari database dan MinIO storage.
+   * Attachment tidak bisa dikembalikan setelah dihapus.
+   *
+   * @param params - { attachmentId }
+   * @param set - HTTP response setter
+   * @returns { success: boolean, message: string }
+   */
+  static async deleteAttachment({ params, set }: { params: any; set: any }) {
+    try {
+      const { attachmentId } = params;
 
-            // Verify attachment exists
-            const attachment = await db.attachment.findUnique({
-                where: { id: attachmentId },
-                include: { letterInstance: true },
-            });
+      console.log("[PROCESSING] Delete attachment untuk ID:", attachmentId);
 
-            if (!attachment) {
-                set.status = 404;
-                return { error: "Attachment not found" };
-            }
+      // Verifikasi attachment exists
+      const attachment = await db.attachment.findUnique({
+        where: { id: attachmentId },
+        include: { letterInstance: true },
+      });
 
-            // Skip ownership check for now
+      if (!attachment) {
+        console.error("[ERROR] Attachment tidak ditemukan:", attachmentId);
+        set.status = 404;
+        return { error: "Attachment not found" };
+      }
 
-            // Delete
-            await AttachmentService.deleteAttachment(attachmentId);
+      // Abaikan ownership check untuk sekarang
 
-            return {
-                success: true,
-                message: "Attachment deleted successfully",
-            };
-        } catch (error) {
-            console.error("Delete attachment error:", error);
-            set.status = 500;
-            return {
-                error: error instanceof Error ? error.message : "Delete failed",
-            };
-        }
+      // Hapus attachment
+      await AttachmentService.deleteAttachment(attachmentId);
+
+      console.log("[SUCCESS] Attachment berhasil dihapus:", {
+        attachmentId,
+        filename: attachment.filename,
+      });
+      return {
+        success: true,
+        message: "Attachment deleted successfully",
+      };
+    } catch (error) {
+      console.error("[ERROR] Delete attachment gagal:", error);
+      set.status = 500;
+      return {
+        error: error instanceof Error ? error.message : "Delete failed",
+      };
     }
+  }
 
-    /**
-     * Proxy file dari MinIO ke browser.
-     * Browser tidak bisa akses MinIO langsung (localhost / internal),
-     * jadi file di-stream lewat API server ini.
-     */
-    static async downloadAttachment({
-        params,
-        set,
-    }: {
-        params: any;
-        set: any;
-    }) {
-        try {
-            const { attachmentId } = params;
+  /**
+   * [ENDPOINT] downloadAttachment - Download/stream attachment file ke browser
+   *
+   * Proxy file dari MinIO ke browser karena browser tidak bisa akses MinIO langsung
+   * (localhost/internal network). File di-stream dengan response headers yang tepat
+   * untuk inline preview atau download.
+   *
+   * Fitur:
+   * - Stream file dari MinIO storage
+   * - Set proper content-type, content-length, dan cache headers
+   * - Support inline preview (image, pdf) atau direct download
+   *
+   * @param params - { attachmentId }
+   * @param set - HTTP response setter
+   * @returns Response dengan file stream sebagai body
+   */
+  static async downloadAttachment({ params, set }: { params: any; set: any }) {
+    try {
+      const { attachmentId } = params;
 
-            const attachment = await db.attachment.findUnique({
-                where: { id: attachmentId },
-            });
+      console.log("[PROCESSING] Download attachment untuk ID:", attachmentId);
 
-            if (!attachment || attachment.deletedAt) {
-                set.status = 404;
-                return { error: "Attachment not found" };
-            }
+      const attachment = await db.attachment.findUnique({
+        where: { id: attachmentId },
+      });
 
-            // Stream file dari MinIO via internal connection (localhost)
-            const { stat, stream } = await MinioService.getFileStream(
-                attachment.domain,
-            );
+      if (!attachment || attachment.deletedAt) {
+        console.error(
+          "[ERROR] Attachment tidak ditemukan atau sudah dihapus:",
+          attachmentId,
+        );
+        set.status = 404;
+        return { error: "Attachment not found" };
+      }
 
-            // Set response headers
-            const contentType =
-                attachment.mimeType ||
-                stat.metaData["content-type"] ||
-                "application/octet-stream";
-            const safeFilename = encodeURIComponent(attachment.filename);
+      // Stream file dari MinIO via internal connection (localhost)
+      const { stat, stream } = await MinioService.getFileStream(
+        attachment.domain,
+      );
 
-            set.headers["content-type"] = contentType;
-            set.headers["content-length"] = String(stat.size);
-            set.headers["content-disposition"] =
-                `inline; filename="${safeFilename}"; filename*=UTF-8''${safeFilename}`;
-            set.headers["cache-control"] = "private, max-age=3600";
+      console.log("[INFO] File stream diterima dari MinIO:", {
+        attachmentId,
+        filename: attachment.filename,
+        fileSize: stat.size,
+        contentType: attachment.mimeType,
+      });
 
-            // Convert MinIO stream (Node Readable) to a Web ReadableStream for Elysia
-            return new Response(
-                Readable.toWeb(stream as unknown as Readable) as ReadableStream,
-                {
-                    headers: {
-                        "content-type": contentType,
-                        "content-length": String(stat.size),
-                        "content-disposition": `inline; filename="${safeFilename}"; filename*=UTF-8''${safeFilename}`,
-                        "cache-control": "private, max-age=3600",
-                    },
-                },
-            );
-        } catch (error) {
-            console.error("Download attachment error:", error);
-            set.status = 500;
-            return {
-                error:
-                    error instanceof Error ? error.message : "Download failed",
-            };
-        }
+      // Set response headers
+      const contentType =
+        attachment.mimeType ||
+        stat.metaData["content-type"] ||
+        "application/octet-stream";
+      const safeFilename = encodeURIComponent(attachment.filename);
+
+      set.headers["content-type"] = contentType;
+      set.headers["content-length"] = String(stat.size);
+      set.headers["content-disposition"] =
+        `inline; filename="${safeFilename}"; filename*=UTF-8''${safeFilename}`;
+      set.headers["cache-control"] = "private, max-age=3600";
+
+      console.log("[SUCCESS] Attachment siap untuk download:", {
+        attachmentId,
+        filename: attachment.filename,
+        fileSize: stat.size,
+      });
+
+      // Convert MinIO stream (Node Readable) ke Web ReadableStream untuk Elysia
+      return new Response(
+        Readable.toWeb(stream as unknown as Readable) as ReadableStream,
+        {
+          headers: {
+            "content-type": contentType,
+            "content-length": String(stat.size),
+            "content-disposition": `inline; filename="${safeFilename}"; filename*=UTF-8''${safeFilename}`,
+            "cache-control": "private, max-age=3600",
+          },
+        },
+      );
+    } catch (error) {
+      console.error("[ERROR] Download attachment gagal:", error);
+      set.status = 500;
+      return {
+        error: error instanceof Error ? error.message : "Download failed",
+      };
     }
+  }
 }
