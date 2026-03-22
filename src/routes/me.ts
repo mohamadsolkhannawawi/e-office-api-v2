@@ -112,7 +112,7 @@ export default new Elysia()
         mahasiswaNim: fullUser.mahasiswa?.nim,
       });
 
-      // Always rewrite image to proxy URL so clients never reference MinIO directly
+      // Selalu ubah image ke URL proxy agar klien tidak mengakses MinIO secara langsung
       const imageUrl = fullUser.image ? "/api/me/photo" : null;
 
       return { ...fullUser, image: imageUrl };
@@ -243,7 +243,7 @@ export default new Elysia()
       }
 
       try {
-        // Update user data
+        // Perbarui data user
         const updateData: any = {};
         if (body.name) updateData.name = body.name;
         if (body.image) updateData.image = body.image;
@@ -256,7 +256,7 @@ export default new Elysia()
               })
             : await db.user.findUnique({ where: { id: user.id } });
 
-        // Update phone number / tahunMasuk / tempatLahir / tanggalLahir based on role
+        // Perbarui noHp / tahunMasuk / tempatLahir / tanggalLahir berdasarkan role
         if (
           body.noHp ||
           body.tahunMasuk ||
@@ -313,7 +313,7 @@ export default new Elysia()
     },
   )
   /**
-   * Upload profile photo
+   * Upload foto profil
    */
   .post(
     "/photo",
@@ -326,10 +326,10 @@ export default new Elysia()
       try {
         let finalUrl = body.url;
 
-        // If URL is a base64 data URL, convert and upload to MinIO
+        // Jika URL berupa data URL base64, konversi dan upload ke MinIO
         if (body.url.startsWith("data:image")) {
           try {
-            // Parse base64 data
+            // Parse data base64
             const matches = body.url.match(/^data:image\/(\w+);base64,(.+)$/);
             if (!matches || !matches[2]) {
               throw new Error("Invalid base64 image format");
@@ -338,19 +338,19 @@ export default new Elysia()
             const [, extension, base64Data] = matches;
             const buffer = Buffer.from(base64Data, "base64");
 
-            // Create a File-like object for MinIO
+            // Buat objek mirip File untuk MinIO
             const fileName = `profile_${user.id}_${Date.now()}.${extension}`;
             const file = new File([buffer], fileName, {
               type: `image/${extension}`,
             });
 
-            // Upload to MinIO using static method
+            // Upload ke MinIO menggunakan method statis
             const uploadResult = await MinioService.uploadFile(
               file,
               "profiles/",
               `image/${extension}`,
             );
-            // Store the MinIO object path (not presigned URL) so proxy can serve it
+            // Simpan path objek MinIO (bukan presigned URL) agar bisa dilayani via proxy
             finalUrl = "profiles/" + uploadResult.nameReplace;
           } catch (uploadError) {
             console.error(
@@ -368,13 +368,13 @@ export default new Elysia()
           }
         }
 
-        // Update user image field
+        // Perbarui field image user
         const updatedUser = await db.user.update({
           where: { id: user.id },
           data: { image: finalUrl },
         });
 
-        // Return proxy URL so frontend immediately uses proxy
+        // Kembalikan URL proxy agar frontend langsung menggunakan proxy
         const returnImage =
           updatedUser.image && !updatedUser.image.startsWith("http")
             ? "/api/me/photo"
@@ -397,12 +397,12 @@ export default new Elysia()
     },
     {
       body: t.Object({
-        url: t.String(), // Base64 data URL atau path ke file
+        url: t.String(), // Data URL base64 atau path file
       }),
     },
   )
   /**
-   * Proxy endpoint to serve profile photo from MinIO
+   * Endpoint proxy untuk melayani foto profil dari MinIO
    */
   .get(
     "/photo",
@@ -422,26 +422,26 @@ export default new Elysia()
         return new Response("No profile photo", { status: 404 });
       }
 
-      // If the stored image is an old MinIO presigned/plain HTTP URL,
-      // extract the object path so we can stream it directly (the stored
-      // hostname may be unreachable from the client, e.g. localhost).
+      // Jika image tersimpan berupa URL MinIO lama (presigned/plain HTTP),
+      // ekstrak object path agar bisa di-stream langsung (hostname tersimpan
+      // bisa jadi tidak dapat diakses dari klien, misalnya localhost).
       let objectPath = dbUser.image;
       if (dbUser.image.startsWith("http")) {
         try {
           const parsed = new URL(dbUser.image);
-          // pathname is "/<bucket>/<object_key...>" — drop leading "/"
-          // then strip the bucket name prefix
+          // pathname berbentuk "/<bucket>/<object_key...>" — hapus "/" awal
+          // lalu hilangkan prefix nama bucket
           const parts = parsed.pathname.replace(/^\//, "").split("/");
-          // parts[0] = bucket name, rest = object key
+          // parts[0] = nama bucket, sisanya = object key
           if (parts.length >= 2) {
             objectPath = parts.slice(1).join("/");
-            // Persist the cleaned-up path so future requests skip this step
+            // Simpan path yang sudah dibersihkan agar request berikutnya melewati langkah ini
             await db.user.update({
               where: { id: user.id },
               data: { image: objectPath },
             });
           } else {
-            // Cannot parse — fall back to redirect
+            // Tidak bisa diparse — fallback ke redirect
             return Response.redirect(dbUser.image, 302);
           }
         } catch {
