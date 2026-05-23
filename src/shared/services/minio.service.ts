@@ -276,4 +276,6 @@ export abstract class MinioService {
   }
 }
 
-await MinioService.ensureBucket();
+await MinioService.ensureBucket().catch((err) => {
+  console.warn("[WARNING] MinIO is not running or connection failed:", err.message);
+});
