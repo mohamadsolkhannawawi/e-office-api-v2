@@ -2,6 +2,7 @@
 export default {
   preset: "ts-jest/presets/default-esm",
   testEnvironment: "node",
+  setupFiles: ["dotenv/config"],
   extensionsToTreatAsEsm: [".ts"],
   moduleNameMapper: {
     "^@backend/(.*)$": "<rootDir>/src/$1",
