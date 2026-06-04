@@ -5,6 +5,10 @@ import { auth } from "@backend/lib/auth.ts";
 import { Elysia } from "elysia";
 import { autoload } from "elysia-autoload";
 import env from "env-var";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import suratRekomendasiRoutes from "./modules/surat-rekomendasi-beasiswa/routes.ts";
 import notificationRoutes from "./routes/notifications.ts";
 import signatureRoutes from "./routes/signatures.ts";
@@ -282,9 +286,10 @@ export const app = new Elysia()
   )
   .use(
     await autoload({
+      dir: path.resolve(__dirname, "routes"),
       prefix: "/api",
       types: {
-        output: "./autogen.routes.ts",
+        output: path.resolve(__dirname, "autogen.routes.ts"),
         typeName: "App",
         useExport: true,
       },
