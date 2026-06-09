@@ -418,8 +418,8 @@ export class ApplicationController {
       // Jika pengajuan ulang setelah revisi atau submit pertama dari draft, buat entry riwayat
       if (isResubmissionAfterRevision || isInitialSubmissionFromDraft) {
         const actionNote = isResubmissionAfterRevision
-          ? "Revisi selesai, pengajuan disubmit ulang ke Supervisor Akademik"
-          : "Pengajuan Surat Rekomendasi Beasiswa disubmit ke Supervisor Akademik";
+          ? "Revisi selesai, pengajuan disubmit ulang"
+          : "Pengajuan Surat Rekomendasi Beasiswa disubmit";
 
         const actionType = isResubmissionAfterRevision ? "resubmit" : "submit";
 
@@ -2111,7 +2111,7 @@ export class ApplicationController {
 
       return {
         success: true,
-        message: "Surat berhasil direvisi dan dikirim ke Supervisor Akademik.",
+        message: "Surat berhasil direvisi.",
       };
     } catch (error) {
       console.error("studentEditApplication error:", error);
