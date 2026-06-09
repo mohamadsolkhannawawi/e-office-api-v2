@@ -418,8 +418,8 @@ export class ApplicationController {
       // Jika pengajuan ulang setelah revisi atau submit pertama dari draft, buat entry riwayat
       if (isResubmissionAfterRevision || isInitialSubmissionFromDraft) {
         const actionNote = isResubmissionAfterRevision
-          ? "Revisi selesai, pengajuan disubmit ulang"
-          : "Pengajuan Surat Rekomendasi Beasiswa disubmit";
+          ? "Revisi selesai, pengajuan disubmit ulang ke Supervisor Akademik"
+          : "Pengajuan Surat Rekomendasi Beasiswa disubmit ke Supervisor Akademik";
 
         const actionType = isResubmissionAfterRevision ? "resubmit" : "submit";
 
@@ -1262,10 +1262,7 @@ export class ApplicationController {
         {
           actorId: user.id,
           action: action,
-          note:
-            action === "revision" && targetRoleNameForHistory
-              ? `${notes || ""} [ke ${targetRoleNameForHistory}]`
-              : notes,
+          note: notes,
           roleId: effectiveRoleId, // Use step role for SUPER_ADMIN, own role otherwise
         },
       );
@@ -2111,7 +2108,7 @@ export class ApplicationController {
 
       return {
         success: true,
-        message: "Surat berhasil direvisi.",
+        message: "Surat berhasil direvisi dan dikirim ke Supervisor Akademik.",
       };
     } catch (error) {
       console.error("studentEditApplication error:", error);
