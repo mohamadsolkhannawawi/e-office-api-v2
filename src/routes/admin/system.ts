@@ -247,7 +247,12 @@ export default new Elysia()
       const where: any = {};
 
       if (userId) {
-        where.actionBy = userId;
+        where.actor = {
+          name: {
+            contains: userId,
+            mode: "insensitive",
+          },
+        };
       }
 
       if (action) {
