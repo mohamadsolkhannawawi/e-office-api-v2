@@ -208,7 +208,7 @@ export default new Elysia()
 
       if (mahasiswaCount > 0 || pegawaiCount > 0) {
         throw new Error(
-          `Cannot delete program studi with ${mahasiswaCount + pegawaiCount} users. Reassign them first.`,
+          `Tidak dapat menghapus program studi dengan ${mahasiswaCount + pegawaiCount} pengguna. Hapus atau pindahkan terlebih dahulu.`,
         );
       }
 
